@@ -94,7 +94,7 @@ VITE_API_BASE_URL=https://your-backend-url.onrender.com
 4. Configure build settings:
    - **Base directory**: `frontend`
    - **Build command**: `npm install && npm run build`
-   - **Publish directory**: `frontend/dist`
+   - **Publish directory**: `dist` (relative to base directory, so it's `frontend/dist` from repo root)
 5. Click "Show advanced" and add Environment Variable:
    - **Key**: `VITE_API_BASE_URL`
    - **Value**: Your Render backend URL (from Step 1, e.g., `https://algovault-backend.onrender.com`)
@@ -228,6 +228,13 @@ If you grow beyond 10 problems, you can upgrade to PostgreSQL:
 - Check Render logs: Click on your service → "Logs"
 - Make sure `startCommand` uses `$PORT` (Render sets this)
 - Verify Root Directory is set to `backend` in Settings
+
+### Frontend deployment failing?
+- **Error: `Deploy directory 'frontend/frontend/dist' does not exist`**
+  - **Fix**: In `netlify.toml`, change `publish = "frontend/dist"` to `publish = "dist"`
+  - When `base = "frontend"`, the publish path is relative to the base directory
+  - So `dist` means `frontend/dist` from the repo root
+  - Commit and push the fix, Netlify will redeploy automatically
 
 ### Frontend can't connect to backend?
 - Check CORS settings in `backend/main.go`

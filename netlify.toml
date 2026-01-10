@@ -4,7 +4,7 @@
 [build]
   base = "frontend"
   command = "npm install && npm run build"
-  publish = "frontend/dist"
+  publish = "dist"
 
 # Redirect all routes to index.html for SPA routing
 [[redirects]]
