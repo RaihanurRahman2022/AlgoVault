@@ -50,16 +50,27 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalize email (trim whitespace and convert to lowercase for comparison)
-	email := strings.TrimSpace(strings.ToLower(req.Email))
-
 	var user User
+	var role sql.NullString
+	// Normalize email for comparison (trim and lowercase)
+	normalizedEmail := strings.TrimSpace(strings.ToLower(req.Email))
+
 	// Use COALESCE to handle NULL role values (default to 'admin')
-	// Use LOWER() in SQL to handle case-insensitive email matching
-	err := h.DB.DB.QueryRow(
-		"SELECT id, email, name, password, COALESCE(role, 'admin') as role FROM users WHERE LOWER(TRIM(email)) = ?",
-		email,
-	).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &user.Role)
+	// Query with case-insensitive email matching - try multiple approaches
+	// First try exact match (in case email is stored exactly as entered)
+	var err error
+	err = h.DB.DB.QueryRow(
+		"SELECT id, email, name, password, COALESCE(role, 'admin') as role FROM users WHERE email = ?",
+		strings.TrimSpace(req.Email), // Try exact match first
+	).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &role)
+
+	// If exact match fails, try case-insensitive match (without TRIM in SQL, handle trimming in Go)
+	if err == sql.ErrNoRows {
+		err = h.DB.DB.QueryRow(
+			"SELECT id, email, name, password, COALESCE(role, 'admin') as role FROM users WHERE LOWER(email) = ?",
+			normalizedEmail,
+		).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &role)
+	}
 
 	if err == sql.ErrNoRows {
 		respondWithError(w, http.StatusUnauthorized, "User not found. Please register first or check your email.")
@@ -69,22 +80,26 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
 		return
 	}
-	
-	// Ensure role is set (fallback to admin if empty)
-	if user.Role == "" {
+
+	// Handle role
+	if role.Valid && role.String != "" {
+		user.Role = role.String
+	} else {
 		user.Role = "admin"
-		// Update the user in database to have a role
+		// Update the user in database to have a role if it was NULL
 		h.DB.DB.Exec("UPDATE users SET role = 'admin' WHERE id = ? AND (role IS NULL OR role = '')", user.ID)
 	}
 
 	// Compare password - check if password hash is valid first
 	if len(user.Password) == 0 {
-		respondWithError(w, http.StatusInternalServerError, "User account error")
+		respondWithError(w, http.StatusInternalServerError, "User account error: password hash is empty")
 		return
 	}
 
 	// Compare password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+		// Log the error for debugging (in production, you might want to remove this)
+		fmt.Printf("Password comparison failed for user %s: %v\n", user.Email, err)
 		respondWithError(w, http.StatusUnauthorized, "Invalid password. Please check your password and try again.")
 		return
 	}
@@ -509,13 +524,13 @@ func (h *Handlers) UpdateProblem(w http.ResponseWriter, r *http.Request) {
 	for _, sol := range prob.Solutions {
 		sol.ProblemID = id
 		sol.UpdatedAt = time.Now()
-		
+
 		// Check if solution exists for this language
 		var existingID string
 		err := h.DB.DB.QueryRow(`
 			SELECT id FROM solutions WHERE problem_id = ? AND language = ?
 		`, id, sol.Language).Scan(&existingID)
-		
+
 		if err == sql.ErrNoRows {
 			// New solution - generate ID
 			sol.ID = generateID()
@@ -531,7 +546,7 @@ func (h *Handlers) UpdateProblem(w http.ResponseWriter, r *http.Request) {
 				UPDATE solutions SET code = ?, updated_at = ? WHERE problem_id = ? AND language = ?
 			`, sol.Code, sol.UpdatedAt, sol.ProblemID, sol.Language)
 		}
-		
+
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Error saving solution")
 			return
@@ -606,15 +621,15 @@ type GenerateProblemRequest struct {
 }
 
 type GenerateProblemResponse struct {
-	Title         string `json:"title"`
-	Difficulty    string `json:"difficulty"`
-	Description   string `json:"description"`
-	Input         string `json:"input"`
-	Output        string `json:"output"`
-	Constraints   string `json:"constraints"`
-	SampleInput   string `json:"sampleInput"`
-	SampleOutput  string `json:"sampleOutput"`
-	Explanation   string `json:"explanation"`
+	Title        string `json:"title"`
+	Difficulty   string `json:"difficulty"`
+	Description  string `json:"description"`
+	Input        string `json:"input"`
+	Output       string `json:"output"`
+	Constraints  string `json:"constraints"`
+	SampleInput  string `json:"sampleInput"`
+	SampleOutput string `json:"sampleOutput"`
+	Explanation  string `json:"explanation"`
 }
 
 // GenerateProblem uses AI to generate problem details
@@ -716,7 +731,7 @@ Return ONLY valid JSON with these exact keys. Use markdown formatting for multi-
 
 	// Extract JSON from the response (might be wrapped in markdown code blocks)
 	content := openRouterResp.Choices[0].Message.Content
-	
+
 	// Try to extract JSON from markdown code blocks if present
 	jsonStart := 0
 	jsonEnd := len(content)
@@ -729,7 +744,7 @@ Return ONLY valid JSON with these exact keys. Use markdown formatting for multi-
 	if idx := bytes.LastIndex(contentBytes, []byte("```")); idx != -1 && idx > jsonStart {
 		jsonEnd = idx
 	}
-	
+
 	jsonContent := string(bytes.TrimSpace([]byte(content[jsonStart:jsonEnd])))
 
 	// Parse the generated problem
