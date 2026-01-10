@@ -11,8 +11,6 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -22,17 +20,10 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setError('');
     
     try {
-      if (isRegister) {
-        // Register new user
-        const result = await api.register(email, password, name);
-        onLogin(result.user, result.token);
-      } else {
-        // Login existing user
-        const result = await api.login(email, password);
-        onLogin(result.user, result.token);
-      }
+      const result = await api.login(email, password);
+      onLogin(result.user, result.token);
     } catch (err: any) {
-      setError(err.message || (isRegister ? 'Failed to create account. Please try again.' : 'Invalid credentials. Please try again.'));
+      setError(err.message || 'Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -49,54 +40,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <p className="text-slate-400 text-center">Your companion for technical interview mastery.</p>
         </div>
 
-        <div className="flex gap-2 mb-6">
-          <button
-            type="button"
-            onClick={() => {
-              setIsRegister(false);
-              setError('');
-            }}
-            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${
-              !isRegister
-                ? 'bg-indigo-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-            }`}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIsRegister(true);
-              setError('');
-            }}
-            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${
-              isRegister
-                ? 'bg-indigo-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-            }`}
-          >
-            Create Account
-          </button>
-        </div>
-
         <form onSubmit={handleSubmit} className="space-y-6">
-          {isRegister && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Full Name</label>
-              <div className="relative">
-                <input 
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required={isRegister}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-4 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white transition-all"
-                  placeholder="John Doe"
-                />
-              </div>
-            </div>
-          )}
-
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-300">Email Address</label>
             <div className="relative">
@@ -142,7 +86,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <Loader2 size={20} className="animate-spin" />
             ) : (
               <>
-                {isRegister ? 'Create Account' : 'Sign In'}
+                Sign In
                 <ArrowRight size={20} />
               </>
             )}
