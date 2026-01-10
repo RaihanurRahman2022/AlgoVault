@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: algovault-backend
+    env: go
+    plan: free
+    buildCommand: cd backend && go mod download && go build -o server .
+    startCommand: ./server -db ./algovault.db -port $PORT -jwt-secret $JWT_SECRET -ai-api-key $AI_API_KEY
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AI_API_KEY
+        sync: false
+      - key: PORT
+        value: 8080

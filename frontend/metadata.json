@@ -1,0 +1,8 @@
+{
+  "name": "AlgoVault - Practice Problem Tracker",
+  "description": "A professional practice problem and solution manager for engineers. Organize coding challenges by Category, Pattern, and Problem with markdown support and multi-language code storage.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
