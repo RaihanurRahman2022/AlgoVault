@@ -99,9 +99,73 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Register handles user registration - DISABLED
+// Register handles user registration - TEMPORARILY ENABLED
 func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
-	respondWithError(w, http.StatusForbidden, "Registration is disabled. Please use the demo account: demo@algovault.com / demo123")
+	var req RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate input
+	if req.Email == "" || req.Password == "" || req.Name == "" {
+		respondWithError(w, http.StatusBadRequest, "Email, password, and name are required")
+		return
+	}
+
+	// Check if user already exists
+	var existingID string
+	err := h.DB.DB.QueryRow("SELECT id FROM users WHERE email = ?", req.Email).Scan(&existingID)
+	if err == nil {
+		respondWithError(w, http.StatusConflict, "User with this email already exists")
+		return
+	}
+	if err != sql.ErrNoRows {
+		respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
+		return
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error hashing password")
+		return
+	}
+
+	// Generate user ID
+	userID := generateID()
+
+	// Insert user (default role is 'admin' as per schema)
+	_, err = h.DB.DB.Exec(
+		"INSERT INTO users (id, email, name, password, role) VALUES (?, ?, ?, ?, ?)",
+		userID, req.Email, req.Name, string(hashedPassword), "admin",
+	)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error creating user: "+err.Error())
+		return
+	}
+
+	// Generate JWT token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"userID": userID,
+		"exp":    time.Now().Add(time.Hour * 24 * 7).Unix(), // 7 days
+	})
+
+	tokenString, err := token.SignedString([]byte(h.JWTSecret))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error generating token")
+		return
+	}
+
+	respondWithJSON(w, http.StatusCreated, map[string]interface{}{
+		"token": tokenString,
+		"user": map[string]interface{}{
+			"id":    userID,
+			"email": req.Email,
+			"name":  req.Name,
+			"role":  "admin",
+		},
+	})
 }
 
 // Category handlers
