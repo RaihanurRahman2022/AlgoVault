@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -49,10 +50,15 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize email (trim whitespace and convert to lowercase for comparison)
+	email := strings.TrimSpace(strings.ToLower(req.Email))
+
 	var user User
+	// Use COALESCE to handle NULL role values (default to 'admin')
+	// Use LOWER() in SQL to handle case-insensitive email matching
 	err := h.DB.DB.QueryRow(
-		"SELECT id, email, name, password, role FROM users WHERE email = ?",
-		req.Email,
+		"SELECT id, email, name, password, COALESCE(role, 'admin') as role FROM users WHERE LOWER(TRIM(email)) = ?",
+		email,
 	).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &user.Role)
 
 	if err == sql.ErrNoRows {
@@ -62,6 +68,13 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
 		return
+	}
+	
+	// Ensure role is set (fallback to admin if empty)
+	if user.Role == "" {
+		user.Role = "admin"
+		// Update the user in database to have a role
+		h.DB.DB.Exec("UPDATE users SET role = 'admin' WHERE id = ? AND (role IS NULL OR role = '')", user.ID)
 	}
 
 	// Compare password - check if password hash is valid first
