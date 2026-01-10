@@ -36,6 +36,19 @@ services:
 ```
 
 ### 1.2 Deploy on Render
+
+**Option A - Using render.yaml (Easiest):**
+1. Go to [render.com](https://render.com) and sign up (free)
+2. Click "New +" → "Blueprint"
+3. Connect your GitHub repository
+4. Render will auto-detect `render.yaml` and configure everything
+5. Just add the `AI_API_KEY` environment variable manually:
+   - Go to your service → Environment tab
+   - Add: `AI_API_KEY` = your OpenRouter API key
+6. Wait 2-3 minutes for deployment
+7. Copy your backend URL (e.g., `https://algovault-backend.onrender.com`)
+
+**Option B - Manual Configuration:**
 1. Go to [render.com](https://render.com) and sign up (free)
 2. Click "New +" → "Web Service"
 3. Connect your GitHub repository
@@ -43,12 +56,13 @@ services:
 5. Configure:
    - **Name**: `algovault-backend`
    - **Environment**: `Go`
-   - **Build Command**: `cd backend && go mod download && go build -o server .`
+   - **Root Directory**: `backend` (important!)
+   - **Build Command**: `go mod download && go build -o server .`
    - **Start Command**: `./server -db ./algovault.db -port $PORT -jwt-secret $JWT_SECRET -ai-api-key $AI_API_KEY`
 6. Add Environment Variables:
    - `JWT_SECRET`: Click "Generate" (Render will create one)
    - `AI_API_KEY`: Your OpenRouter API key
-   - `PORT`: `8080` (Render sets this automatically, but include it)
+   - `PORT`: `8080` (Render sets this automatically)
 7. Click "Create Web Service"
 8. Wait 2-3 minutes for deployment
 9. Copy your backend URL (e.g., `https://algovault-backend.onrender.com`)

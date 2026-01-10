@@ -3,7 +3,8 @@ services:
     name: algovault-backend
     env: go
     plan: free
-    buildCommand: cd backend && go mod download && go build -o server .
+    rootDir: backend
+    buildCommand: go mod download && go build -o server .
     startCommand: ./server -db ./algovault.db -port $PORT -jwt-secret $JWT_SECRET -ai-api-key $AI_API_KEY
     envVars:
       - key: JWT_SECRET
