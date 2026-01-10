@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Problem, Solution } from '../types';
 import { LANGUAGES } from '../constants';
-import { generateNote } from '../services/geminiService';
 import { api } from '../services/apiService';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
@@ -141,9 +140,15 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
 
   const handleGenerateAINote = async () => {
     setIsGeneratingNote(true);
-    const note = await generateNote(problem.title, problem.solutions);
-    setDynamicNote(note || "Failed to generate AI note.");
-    setIsGeneratingNote(false);
+    try {
+      // Note: AI note generation is not available in the browser for security reasons
+      // This feature would need to be implemented via the backend API
+      setDynamicNote("AI note generation is not available. Please add your notes manually.");
+    } catch (error) {
+      setDynamicNote("Failed to generate AI note.");
+    } finally {
+      setIsGeneratingNote(false);
+    }
   };
 
   const updateSolution = (language: string, code: string) => {
