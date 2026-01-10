@@ -176,11 +176,32 @@ func (d *Database) InitSchema() error {
 
 // migrate runs database migrations for existing databases
 func (d *Database) migrate() error {
-	// Check if role column exists by trying to query it
-	var testRole string
-	err := d.DB.QueryRow("SELECT role FROM users LIMIT 1").Scan(&testRole)
-	
+	// Check if role column exists by querying the table schema
+	rows, err := d.DB.Query("PRAGMA table_info(users)")
 	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	
+	columnExists := false
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		
+		if name == "role" {
+			columnExists = true
+			break
+		}
+	}
+	
+	if !columnExists {
 		// Column doesn't exist, add it
 		// SQLite allows adding a column with DEFAULT even if table has rows
 		_, err = d.DB.Exec(`
