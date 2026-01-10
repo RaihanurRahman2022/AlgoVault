@@ -56,16 +56,26 @@ services:
 5. Configure:
    - **Name**: `algovault-backend`
    - **Environment**: `Go`
-   - **Root Directory**: `backend` (important!)
+   - **Root Directory**: `backend` ⚠️ **CRITICAL - Set this to `backend`**
    - **Build Command**: `go mod download && go build -o server .`
    - **Start Command**: `./server -db ./algovault.db -port $PORT -jwt-secret $JWT_SECRET -ai-api-key $AI_API_KEY`
 6. Add Environment Variables:
    - `JWT_SECRET`: Click "Generate" (Render will create one)
    - `AI_API_KEY`: Your OpenRouter API key
-   - `PORT`: `8080` (Render sets this automatically)
+   - `PORT`: `8080` (Render sets this automatically, but include it)
 7. Click "Create Web Service"
 8. Wait 2-3 minutes for deployment
 9. Copy your backend URL (e.g., `https://algovault-backend.onrender.com`)
+
+**⚠️ IMPORTANT**: If you already created the service and it's failing:
+1. Go to your service → Settings
+2. **Check Root Directory**: Should be set to `backend`
+3. **Check Build Command**: Should be `go mod download && go build -o server .` (NO `cd backend &&` prefix!)
+   - If you see `cd backend && go mod download...`, remove the `cd backend &&` part
+   - With Root Directory = `backend`, you don't need `cd backend` in the command
+4. **Start Command**: Should be `./server -db ./algovault.db -port $PORT -jwt-secret $JWT_SECRET -ai-api-key $AI_API_KEY`
+5. Save changes
+6. Render will automatically redeploy
 
 ---
 
@@ -141,6 +151,56 @@ npm run preview
 
 ---
 
+## Database Setup
+
+### SQLite (Perfect for 5-10 Problems) ✅
+
+**Good news: No database setup needed!** SQLite is built-in and works automatically.
+
+#### How It Works:
+1. **Automatic Creation**: When your backend starts for the first time, it automatically:
+   - Creates `algovault.db` file in the backend directory
+   - Creates all tables (users, categories, patterns, problems, solutions)
+   - Creates the demo user (`demo@algovault.com` / `demo123`)
+
+2. **Data Persistence**: 
+   - The `algovault.db` file is stored on Render's filesystem
+   - Your data persists between deployments
+   - All your problems, solutions, and categories are saved automatically
+
+3. **Perfect for Your Use Case**:
+   - ✅ **5-10 problems**: SQLite handles this easily
+   - ✅ **No separate service**: Everything runs in one container
+   - ✅ **Zero configuration**: Just deploy and it works
+   - ✅ **Free**: No additional cost
+
+#### What Gets Created Automatically:
+- Database file: `backend/algovault.db`
+- Tables: users, categories, patterns, problems, solutions
+- Demo user: `demo@algovault.com` / `demo123` (read-only access)
+- Your admin account: Create it by logging in (registration is disabled, but you can create accounts via database if needed)
+
+#### Database Location on Render:
+- File path: `backend/algovault.db` (relative to backend directory)
+- Persists: Yes, data survives deployments
+- Backup: Consider downloading the `.db` file periodically for backup
+
+### If You Need PostgreSQL Later (100+ Problems)
+
+If you grow beyond 10 problems, you can upgrade to PostgreSQL:
+
+1. **Add PostgreSQL Service** (free on Render):
+   - In Render dashboard: "New +" → "PostgreSQL"
+   - Free tier: 1GB storage, 90 days retention
+
+2. **Update Backend Code**:
+   - Change database connection in `backend/models.go`
+   - Use PostgreSQL connection string from Render
+
+3. **For Now**: SQLite is perfect! No need to change anything.
+
+---
+
 ## Free Tier Limits
 
 ### Render
@@ -159,8 +219,15 @@ npm run preview
 ## Troubleshooting
 
 ### Backend not starting?
+- **Error: `./server: No such file or directory`**
+  - **Fix**: Go to your Render service → Settings → Scroll to "Root Directory"
+  - Set **Root Directory** to: `backend`
+  - Click "Save Changes"
+  - Render will automatically redeploy (wait 2-3 minutes)
+  - This tells Render to run all commands from the `backend` directory where `server` is built
 - Check Render logs: Click on your service → "Logs"
 - Make sure `startCommand` uses `$PORT` (Render sets this)
+- Verify Root Directory is set to `backend` in Settings
 
 ### Frontend can't connect to backend?
 - Check CORS settings in `backend/main.go`
@@ -170,8 +237,12 @@ npm run preview
 - Rebuild your site: Go to Deploys → Trigger deploy → Deploy site
 
 ### Database issues?
-- SQLite file persists on Render's filesystem
-- For 5-10 problems, SQLite is perfect (no need for PostgreSQL)
+- **SQLite is perfect for 5-10 problems** - no separate database service needed!
+- SQLite file (`algovault.db`) persists on Render's filesystem
+- The database is created automatically on first run
+- Demo user is created automatically
+- **Note**: SQLite on Render's free tier works great for small apps
+- If you need to scale later (100+ problems), you can switch to PostgreSQL (also free on Render)
 
 ---
 
