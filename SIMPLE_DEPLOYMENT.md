@@ -55,7 +55,7 @@ services:
 
 ---
 
-## Step 2: Deploy Frontend to Vercel (3 minutes)
+## Step 2: Deploy Frontend to Netlify (3 minutes)
 
 ### 2.1 Update Frontend Config
 1. Update `frontend/.env` or create `frontend/.env.production`:
@@ -63,20 +63,21 @@ services:
 VITE_API_BASE_URL=https://your-backend-url.onrender.com
 ```
 
-### 2.2 Deploy on Vercel
-1. Go to [vercel.com](https://vercel.com) and sign up (free)
-2. Click "Add New..." → "Project"
-3. Import your GitHub repository
-4. Configure:
-   - **Framework Preset**: Vite
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm install && npm run build`
-   - **Output Directory**: `dist`
-5. Add Environment Variable:
-   - `VITE_API_BASE_URL`: Your Render backend URL (from Step 1)
-6. Click "Deploy"
-7. Wait 1-2 minutes
+### 2.2 Deploy on Netlify
+1. Go to [netlify.com](https://netlify.com) and sign up (free)
+2. Click "Add new site" → "Import an existing project"
+3. Connect to GitHub and select your repository
+4. Configure build settings:
+   - **Base directory**: `frontend`
+   - **Build command**: `npm install && npm run build`
+   - **Publish directory**: `frontend/dist`
+5. Click "Show advanced" and add Environment Variable:
+   - **Key**: `VITE_API_BASE_URL`
+   - **Value**: Your Render backend URL (from Step 1, e.g., `https://algovault-backend.onrender.com`)
+6. Click "Deploy site"
+7. Wait 1-2 minutes for build to complete
 8. Your app is live! 🎉
+9. Netlify will give you a URL like `https://your-app-name.netlify.app`
 
 ---
 
@@ -121,7 +122,7 @@ npm run preview
 - `AI_API_KEY` - Your OpenRouter API key
 - `PORT` - Auto-set by Render (8080)
 
-### Frontend (Vercel)
+### Frontend (Netlify)
 - `VITE_API_BASE_URL` - Your Render backend URL
 
 ---
@@ -133,10 +134,11 @@ npm run preview
 - ✅ 512MB RAM
 - ✅ SQLite works great for small apps
 
-### Vercel
-- ✅ Unlimited projects
+### Netlify
 - ✅ 100GB bandwidth/month
+- ✅ 300 build minutes/month
 - ✅ Automatic HTTPS
+- ✅ Free custom domain support
 
 ---
 
@@ -148,8 +150,10 @@ npm run preview
 
 ### Frontend can't connect to backend?
 - Check CORS settings in `backend/main.go`
-- Verify `VITE_API_BASE_URL` matches your Render backend URL
-- Make sure backend URL doesn't have trailing slash
+- Verify `VITE_API_BASE_URL` matches your Render backend URL (no trailing slash, no `/api`)
+- In Netlify: Go to Site settings → Environment variables → Check `VITE_API_BASE_URL` is set correctly
+- **Important**: After changing environment variables in Netlify, you need to trigger a new deploy
+- Rebuild your site: Go to Deploys → Trigger deploy → Deploy site
 
 ### Database issues?
 - SQLite file persists on Render's filesystem
