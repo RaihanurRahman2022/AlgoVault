@@ -80,16 +80,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectCategory, isDemoUser = fa
           <h1 className="text-4xl font-bold text-white tracking-tight mb-2">Practice Topics</h1>
           <p className="text-slate-400">Select a category to explore problem patterns.</p>
         </div>
-        <button 
-          onClick={() => {
-            setEditingCategory(undefined);
-            setShowForm(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition-all"
-        >
-          <Plus size={20} />
-          New Category
-        </button>
+        {!isDemoUser && (
+          <button 
+            onClick={() => {
+              setEditingCategory(undefined);
+              setShowForm(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition-all"
+          >
+            <Plus size={20} />
+            New Category
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
