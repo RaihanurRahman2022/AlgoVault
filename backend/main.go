@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
@@ -79,6 +80,36 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods("GET")
+	
+	// Debug endpoint to check if user exists (remove in production)
+	router.HandleFunc("/api/debug/user-exists", func(w http.ResponseWriter, r *http.Request) {
+		email := r.URL.Query().Get("email")
+		if email == "" {
+			respondWithError(w, http.StatusBadRequest, "Email parameter required")
+			return
+		}
+		
+		var userID string
+		var storedEmail string
+		err := db.DB.QueryRow("SELECT id, email FROM users WHERE email = ? OR LOWER(email) = LOWER(?)", email, email).Scan(&userID, &storedEmail)
+		if err == sql.ErrNoRows {
+			respondWithJSON(w, http.StatusOK, map[string]interface{}{
+				"exists": false,
+				"message": "User not found",
+			})
+			return
+		}
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
+			return
+		}
+		
+		respondWithJSON(w, http.StatusOK, map[string]interface{}{
+			"exists": true,
+			"id": userID,
+			"email": storedEmail,
+		})
+	}).Methods("GET", "OPTIONS")
 
 	// Start server
 	addr := fmt.Sprintf(":%s", *port)

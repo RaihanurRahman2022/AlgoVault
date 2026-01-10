@@ -54,17 +54,19 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var role sql.NullString
 	// Normalize email for comparison (trim and lowercase)
 	normalizedEmail := strings.TrimSpace(strings.ToLower(req.Email))
+	trimmedEmail := strings.TrimSpace(req.Email)
 
 	// Use COALESCE to handle NULL role values (default to 'admin')
-	// Query with case-insensitive email matching - try multiple approaches
-	// First try exact match (in case email is stored exactly as entered)
+	// Try multiple query strategies to find the user
 	var err error
+
+	// Strategy 1: Exact match (case-sensitive, trimmed)
 	err = h.DB.DB.QueryRow(
 		"SELECT id, email, name, password, COALESCE(role, 'admin') as role FROM users WHERE email = ?",
-		strings.TrimSpace(req.Email), // Try exact match first
+		trimmedEmail,
 	).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &role)
 
-	// If exact match fails, try case-insensitive match (without TRIM in SQL, handle trimming in Go)
+	// Strategy 2: Case-insensitive match
 	if err == sql.ErrNoRows {
 		err = h.DB.DB.QueryRow(
 			"SELECT id, email, name, password, COALESCE(role, 'admin') as role FROM users WHERE LOWER(email) = ?",
@@ -72,12 +74,35 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &role)
 	}
 
+	// Strategy 3: Query all users and find match manually (fallback for edge cases)
 	if err == sql.ErrNoRows {
-		respondWithError(w, http.StatusUnauthorized, "User not found. Please register first or check your email.")
+		rows, queryErr := h.DB.DB.Query("SELECT id, email, name, password, COALESCE(role, 'admin') as role FROM users")
+		if queryErr == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var tempUser User
+				var tempRole sql.NullString
+				if scanErr := rows.Scan(&tempUser.ID, &tempUser.Email, &tempUser.Name, &tempUser.Password, &tempRole); scanErr == nil {
+					// Compare normalized emails
+					if strings.TrimSpace(strings.ToLower(tempUser.Email)) == normalizedEmail {
+						user = tempUser
+						role = tempRole
+						err = nil
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if err == sql.ErrNoRows {
+		// Return detailed error message to help debug
+		respondWithError(w, http.StatusUnauthorized, fmt.Sprintf("User not found. Email tried: '%s'. Please check your email or register first.", req.Email))
 		return
 	}
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
+		// Return the actual database error to help debug
+		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Database error: %v", err))
 		return
 	}
 
@@ -98,8 +123,7 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Compare password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
-		// Log the error for debugging (in production, you might want to remove this)
-		fmt.Printf("Password comparison failed for user %s: %v\n", user.Email, err)
+		// Return more specific error (but don't reveal too much for security)
 		respondWithError(w, http.StatusUnauthorized, "Invalid password. Please check your password and try again.")
 		return
 	}
