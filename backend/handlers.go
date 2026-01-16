@@ -151,9 +151,73 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Register handles user registration - DISABLED
+// Register handles user registration
 func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
-	respondWithError(w, http.StatusForbidden, "Registration is disabled. Please use the demo account: demo@algovault.com / demo123")
+	var req RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate input
+	if req.Email == "" || req.Password == "" || req.Name == "" {
+		respondWithError(w, http.StatusBadRequest, "Email, password, and name are required")
+		return
+	}
+
+	// Check if user already exists
+	var existingID string
+	err := h.DB.DB.QueryRow("SELECT id FROM users WHERE email = ? OR LOWER(email) = LOWER(?)", req.Email, req.Email).Scan(&existingID)
+	if err == nil {
+		respondWithError(w, http.StatusConflict, "User with this email already exists")
+		return
+	}
+	if err != sql.ErrNoRows {
+		respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
+		return
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error hashing password")
+		return
+	}
+
+	// Generate user ID
+	userID := generateID()
+
+	// Insert user (default role is 'admin' as per schema)
+	_, err = h.DB.DB.Exec(
+		"INSERT INTO users (id, email, name, password, role) VALUES (?, ?, ?, ?, ?)",
+		userID, req.Email, req.Name, string(hashedPassword), "admin",
+	)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error creating user: "+err.Error())
+		return
+	}
+
+	// Generate JWT token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"userID": userID,
+		"exp":    time.Now().Add(time.Hour * 24 * 7).Unix(), // 7 days
+	})
+
+	tokenString, err := token.SignedString([]byte(h.JWTSecret))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error generating token")
+		return
+	}
+
+	respondWithJSON(w, http.StatusCreated, map[string]interface{}{
+		"token": tokenString,
+		"user": map[string]interface{}{
+			"id":    userID,
+			"email": req.Email,
+			"name":  req.Name,
+			"role":  "admin",
+		},
+	})
 }
 
 // Category handlers
@@ -267,7 +331,7 @@ func (h *Handlers) GetPatterns(w http.ResponseWriter, r *http.Request) {
 	categoryID := vars["categoryId"]
 
 	rows, err := h.DB.DB.Query(`
-		SELECT p.id, p.category_id, p.name, p.icon, p.description, p.created_at, p.updated_at,
+		SELECT p.id, p.category_id, p.name, p.icon, p.description, COALESCE(p.theory, '') as theory, p.created_at, p.updated_at,
 		       COUNT(DISTINCT pr.id) as problem_count
 		FROM patterns p
 		LEFT JOIN problems pr ON pr.pattern_id = p.id
@@ -276,7 +340,7 @@ func (h *Handlers) GetPatterns(w http.ResponseWriter, r *http.Request) {
 		ORDER BY p.created_at DESC
 	`, categoryID)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Database error")
+		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Database error: %v", err))
 		return
 	}
 	defer rows.Close()
@@ -284,7 +348,7 @@ func (h *Handlers) GetPatterns(w http.ResponseWriter, r *http.Request) {
 	var patterns []Pattern
 	for rows.Next() {
 		var pat Pattern
-		err := rows.Scan(&pat.ID, &pat.CategoryID, &pat.Name, &pat.Icon, &pat.Description, &pat.CreatedAt, &pat.UpdatedAt, &pat.ProblemCount)
+		err := rows.Scan(&pat.ID, &pat.CategoryID, &pat.Name, &pat.Icon, &pat.Description, &pat.Theory, &pat.CreatedAt, &pat.UpdatedAt, &pat.ProblemCount)
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Error scanning pattern")
 			return
@@ -316,8 +380,8 @@ func (h *Handlers) CreatePattern(w http.ResponseWriter, r *http.Request) {
 	pat.UpdatedAt = time.Now()
 
 	_, err := h.DB.DB.Exec(
-		"INSERT INTO patterns (id, category_id, name, icon, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		pat.ID, pat.CategoryID, pat.Name, pat.Icon, pat.Description, pat.CreatedAt, pat.UpdatedAt,
+		"INSERT INTO patterns (id, category_id, name, icon, description, theory, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		pat.ID, pat.CategoryID, pat.Name, pat.Icon, pat.Description, pat.Theory, pat.CreatedAt, pat.UpdatedAt,
 	)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error creating pattern")
@@ -343,8 +407,8 @@ func (h *Handlers) UpdatePattern(w http.ResponseWriter, r *http.Request) {
 
 	pat.UpdatedAt = time.Now()
 	_, err := h.DB.DB.Exec(
-		"UPDATE patterns SET name = ?, icon = ?, description = ?, updated_at = ? WHERE id = ?",
-		pat.Name, pat.Icon, pat.Description, pat.UpdatedAt, id,
+		"UPDATE patterns SET name = ?, icon = ?, description = ?, theory = ?, updated_at = ? WHERE id = ?",
+		pat.Name, pat.Icon, pat.Description, pat.Theory, pat.UpdatedAt, id,
 	)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error updating pattern")
@@ -370,6 +434,35 @@ func (h *Handlers) DeletePattern(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Pattern deleted"})
+}
+
+// UpdatePatternTheory updates only the theory field of a pattern
+func (h *Handlers) UpdatePatternTheory(w http.ResponseWriter, r *http.Request) {
+	if isDemoUser(r) {
+		respondWithError(w, http.StatusForbidden, "Demo users cannot update pattern theory")
+		return
+	}
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	var req struct {
+		Theory string `json:"theory"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	_, err := h.DB.DB.Exec(
+		"UPDATE patterns SET theory = ?, updated_at = ? WHERE id = ?",
+		req.Theory, time.Now(), id,
+	)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error updating pattern theory")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]string{"message": "Pattern theory updated"})
 }
 
 // Problem handlers
@@ -785,6 +878,200 @@ Return ONLY valid JSON with these exact keys. Use markdown formatting for multi-
 	}
 
 	respondWithJSON(w, http.StatusOK, generatedProblem)
+}
+
+// GenerateCategoryDescription uses AI to generate category description
+func (h *Handlers) GenerateCategoryDescription(w http.ResponseWriter, r *http.Request) {
+	if isDemoUser(r) {
+		respondWithError(w, http.StatusForbidden, "Demo users cannot generate content")
+		return
+	}
+	
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Name == "" {
+		respondWithError(w, http.StatusBadRequest, "Category name is required")
+		return
+	}
+
+	prompt := fmt.Sprintf("Generate a comprehensive description for a coding problem category named \"%s\". \n\n"+
+		"The description should:\n"+
+		"- Explain what types of problems belong to this category\n"+
+		"- Describe the common characteristics and patterns\n"+
+		"- Mention typical use cases\n"+
+		"- Include a C++ code example demonstrating a typical problem in this category\n"+
+		"- Be clear, concise, and informative\n"+
+		"- Be written in markdown format with proper code blocks\n\n"+
+		"Format the response in markdown. Include C++ code examples in code blocks marked as ```cpp. Return ONLY the markdown content, no JSON wrapper.", req.Name)
+
+	content, err := h.callAI(prompt)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error generating description: "+err.Error())
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]string{"description": content})
+}
+
+// GeneratePatternContent uses AI to generate pattern description and theory
+func (h *Handlers) GeneratePatternContent(w http.ResponseWriter, r *http.Request) {
+	if isDemoUser(r) {
+		respondWithError(w, http.StatusForbidden, "Demo users cannot generate content")
+		return
+	}
+	
+	var req struct {
+		Name         string `json:"name"`
+		CategoryName string `json:"categoryName"`
+		ContentType  string `json:"contentType"` // "description" or "theory"
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if req.Name == "" {
+		respondWithError(w, http.StatusBadRequest, "Pattern name is required")
+		return
+	}
+
+	var prompt string
+	if req.ContentType == "theory" {
+		prompt = fmt.Sprintf("Generate comprehensive theory content for the algorithm pattern \"%s\" in the category \"%s\".\n\n"+
+			"The theory should include:\n"+
+			"- Detailed explanation of the pattern\n"+
+			"- When to use this pattern\n"+
+			"- Step-by-step approach\n"+
+			"- Time and space complexity analysis\n"+
+			"- Common variations\n"+
+			"- Example use cases with C++ code examples\n"+
+			"- Visual explanations where helpful\n\n"+
+			"IMPORTANT: You MUST include C++ code examples. All code examples must be in C++ language. Use code blocks marked as ```cpp for all C++ code.\n"+
+			"Provide at least one complete, working C++ implementation example that demonstrates the pattern.\n"+
+			"Format the response in markdown with proper headings. Return ONLY the markdown content, no JSON wrapper.", req.Name, req.CategoryName)
+	} else {
+		prompt = fmt.Sprintf("Generate a concise description for the algorithm pattern \"%s\" in the category \"%s\".\n\n"+
+			"The description should:\n"+
+			"- Briefly explain what this pattern is\n"+
+			"- Mention key characteristics\n"+
+			"- Give a quick overview of when to use it\n"+
+			"- Include a simple C++ code snippet example\n"+
+			"- Be clear and concise (2-3 sentences plus code example)\n\n"+
+			"Format the response in markdown. Include a C++ code example in a code block marked as ```cpp. Return ONLY the markdown content, no JSON wrapper.", req.Name, req.CategoryName)
+	}
+
+	content, err := h.callAI(prompt)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error generating content: "+err.Error())
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]string{"content": content})
+}
+
+// callAI is a helper function to call the AI service
+func (h *Handlers) callAI(prompt string) (string, error) {
+	// Validate API key
+	if h.AIAPIKey == "" || h.AIAPIKey == "your-api-key-here" {
+		return "", fmt.Errorf("AI API key is not configured. Please set the AI_API_KEY environment variable or pass it via -ai-api-key flag")
+	}
+
+	openRouterURL := "https://openrouter.ai/api/v1/chat/completions"
+	requestBody := map[string]interface{}{
+		"model": "openai/gpt-4o-mini",
+		"messages": []map[string]string{
+			{
+				"role":    "user",
+				"content": prompt,
+			},
+		},
+		"temperature": 0.7,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return "", err
+	}
+
+	httpReq, err := http.NewRequest("POST", openRouterURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", err
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+h.AIAPIKey)
+	httpReq.Header.Set("HTTP-Referer", "https://github.com/algovault")
+	httpReq.Header.Set("X-Title", "AlgoVault")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to AI service: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		// Try to parse error response for better error message
+		var errorResp struct {
+			Error struct {
+				Message string `json:"message"`
+				Code    int    `json:"code"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(body, &errorResp) == nil && errorResp.Error.Message != "" {
+			if resp.StatusCode == 401 {
+				return "", fmt.Errorf("invalid or expired OpenRouter API key. Please check your AI_API_KEY. Error: %s", errorResp.Error.Message)
+			}
+			return "", fmt.Errorf("AI service error (%d): %s", resp.StatusCode, errorResp.Error.Message)
+		}
+		return "", fmt.Errorf("AI service error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var openRouterResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	if err := json.Unmarshal(body, &openRouterResp); err != nil {
+		return "", err
+	}
+
+	if len(openRouterResp.Choices) == 0 {
+		return "", fmt.Errorf("no response from AI service")
+	}
+
+	content := openRouterResp.Choices[0].Message.Content
+	// Remove outer markdown code blocks if the entire response is wrapped in them
+	// But keep code blocks that are part of the content (like ```cpp)
+	contentTrimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(contentTrimmed, "```") && strings.HasSuffix(contentTrimmed, "```") {
+		// Check if it's a wrapper (starts with ```json or ```markdown or just ```)
+		firstLine := strings.Split(contentTrimmed, "\n")[0]
+		if strings.Contains(firstLine, "json") || strings.Contains(firstLine, "markdown") || 
+		   (strings.Count(contentTrimmed, "```") == 2 && strings.Index(contentTrimmed, "```") == 0) {
+			// Remove the wrapper
+			lines := strings.Split(contentTrimmed, "\n")
+			if len(lines) > 2 {
+				content = strings.Join(lines[1:len(lines)-1], "\n")
+			}
+		}
+	}
+
+	return content, nil
 }
 
 func min(a, b int) int {

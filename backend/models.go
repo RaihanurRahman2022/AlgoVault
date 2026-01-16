@@ -36,6 +36,7 @@ type Pattern struct {
 	Name         string    `json:"name"`
 	Icon         string    `json:"icon"`
 	Description  string    `json:"description"`
+	Theory       string    `json:"theory"` // Markdown content
 	ProblemCount int       `json:"problemCount"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
@@ -129,6 +130,7 @@ func (d *Database) InitSchema() error {
 			name TEXT NOT NULL,
 			icon TEXT NOT NULL,
 			description TEXT NOT NULL,
+			theory TEXT DEFAULT '',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
@@ -210,10 +212,44 @@ func (d *Database) migrate() error {
 		if err != nil {
 			return err
 		}
-		
+
 		// Update any existing NULL values to 'admin' (shouldn't be needed with DEFAULT, but just in case)
 		_, err = d.DB.Exec(`
 			UPDATE users SET role = 'admin' WHERE role IS NULL
+		`)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Migrate patterns table to add theory column
+	patternRows, err := d.DB.Query("PRAGMA table_info(patterns)")
+	if err != nil {
+		return err
+	}
+	defer patternRows.Close()
+
+	theoryColumnExists := false
+	for patternRows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+
+		if err := patternRows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+
+		if name == "theory" {
+			theoryColumnExists = true
+			break
+		}
+	}
+
+	if !theoryColumnExists {
+		_, err = d.DB.Exec(`
+			ALTER TABLE patterns ADD COLUMN theory TEXT DEFAULT ''
 		`)
 		if err != nil {
 			return err

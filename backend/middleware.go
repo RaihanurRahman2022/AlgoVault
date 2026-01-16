@@ -18,9 +18,12 @@ const roleKey contextKey = "role"
 func AuthMiddleware(jwtSecret string, db *Database) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Ensure CORS headers are set before any processing
+			setCORSHeaders(w)
+			
 			// Skip auth for OPTIONS requests (CORS preflight)
 			if r.Method == "OPTIONS" {
-				next.ServeHTTP(w, r)
+				w.WriteHeader(http.StatusOK)
 				return
 			}
 

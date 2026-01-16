@@ -4,19 +4,22 @@ import { api } from '../services/apiService';
 import { Pattern, Problem } from '../types';
 import ProblemForm from '../components/ProblemForm';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
-import { Plus, Filter, SortAsc, SortDesc, CheckCircle2, Trash2, X } from 'lucide-react';
+import TheoryModal from '../components/TheoryModal';
+import { Plus, Filter, SortAsc, SortDesc, CheckCircle2, Trash2, X, BookOpen } from 'lucide-react';
 
 interface PatternDetailProps {
   pattern: Pattern;
+  categoryName: string;
   onSelectProblem: (prob: Problem) => void;
   onProblemUpdated?: () => void;
+  onPatternUpdated?: () => void;
   isDemoUser?: boolean;
 }
 
 type DifficultyFilter = 'All' | 'Easy' | 'Medium' | 'Hard';
 type SortOrder = 'asc' | 'desc' | null;
 
-const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, onSelectProblem, isDemoUser = false }) => {
+const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, categoryName, onSelectProblem, onPatternUpdated, isDemoUser = false }) => {
   const [problems, setProblems] = useState<Problem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -29,6 +32,8 @@ const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, onSelectProblem,
     problem: null,
   });
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showTheoryModal, setShowTheoryModal] = useState(false);
+  const [currentPattern, setCurrentPattern] = useState<Pattern>(pattern);
 
   const loadProblems = () => {
     setLoading(true);
@@ -46,7 +51,8 @@ const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, onSelectProblem,
 
   useEffect(() => {
     loadProblems();
-  }, [pattern.id]);
+    setCurrentPattern(pattern);
+  }, [pattern.id, pattern]);
 
   // Close filter menu when clicking outside
   useEffect(() => {
@@ -88,8 +94,17 @@ const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, onSelectProblem,
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">{pattern.name}</h1>
+        <div className="flex-1">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-white tracking-tight">{pattern.name}</h1>
+            <button
+              onClick={() => setShowTheoryModal(true)}
+              className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-700 rounded-lg transition-colors"
+              title="View Pattern Theory"
+            >
+              <BookOpen size={20} />
+            </button>
+          </div>
           <p className="text-slate-400 mt-1 max-w-2xl">{pattern.description}</p>
         </div>
         {!isDemoUser && (
@@ -294,6 +309,23 @@ const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, onSelectProblem,
         message="Are you sure you want to delete this problem? This action cannot be undone."
         itemName={deleteModal.problem?.title}
         isLoading={isDeleting}
+      />
+
+      <TheoryModal
+        patternId={currentPattern.id}
+        patternName={currentPattern.name}
+        categoryName={categoryName}
+        initialTheory={currentPattern.theory || ''}
+        isOpen={showTheoryModal}
+        onClose={() => setShowTheoryModal(false)}
+        onUpdate={async (theory) => {
+          await api.updatePatternTheory(currentPattern.id, theory);
+          setCurrentPattern({ ...currentPattern, theory });
+          if (onPatternUpdated) {
+            onPatternUpdated();
+          }
+        }}
+        isDemoUser={isDemoUser}
       />
     </div>
   );

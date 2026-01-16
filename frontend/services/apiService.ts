@@ -123,6 +123,15 @@ export const api = {
     });
     return handleResponse(response);
   },
+
+  updatePatternTheory: async (id: string, theory: string): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/patterns/${id}/theory`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ theory }),
+    });
+    return handleResponse(response);
+  },
   
   // Problems
   getProblems: async (patternId: string): Promise<Problem[]> => {
@@ -181,6 +190,24 @@ export const api = {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ query }),
+    });
+    return handleResponse(response);
+  },
+
+  generateCategoryDescription: async (name: string): Promise<{ description: string }> => {
+    const response = await fetch(`${API_BASE_URL}/ai/generate-category-description`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ name }),
+    });
+    return handleResponse(response);
+  },
+
+  generatePatternContent: async (name: string, categoryName: string, contentType: 'description' | 'theory'): Promise<{ content: string }> => {
+    const response = await fetch(`${API_BASE_URL}/ai/generate-pattern-content`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ name, categoryName, contentType }),
     });
     return handleResponse(response);
   }

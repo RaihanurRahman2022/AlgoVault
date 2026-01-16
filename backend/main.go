@@ -18,7 +18,7 @@ func main() {
 	if portEnv == "" {
 		portEnv = "8080"
 	}
-	
+
 	dbPath := flag.String("db", "./algovault.db", "Path to SQLite database file")
 	port := flag.String("port", portEnv, "Server port")
 	jwtSecret := flag.String("jwt-secret", getEnv("JWT_SECRET", "your-secret-key-change-in-production"), "JWT secret key")
@@ -64,6 +64,7 @@ func main() {
 	api.HandleFunc("/categories/{categoryId}/patterns", handlers.CreatePattern).Methods("POST", "OPTIONS")
 	api.HandleFunc("/patterns/{id}", handlers.UpdatePattern).Methods("PUT", "OPTIONS")
 	api.HandleFunc("/patterns/{id}", handlers.DeletePattern).Methods("DELETE", "OPTIONS")
+	api.HandleFunc("/patterns/{id}/theory", handlers.UpdatePatternTheory).Methods("PUT", "OPTIONS")
 
 	// Problem routes
 	api.HandleFunc("/patterns/{patternId}/problems", handlers.GetProblems).Methods("GET", "OPTIONS")
@@ -71,16 +72,18 @@ func main() {
 	api.HandleFunc("/problems/{id}", handlers.GetProblem).Methods("GET", "OPTIONS")
 	api.HandleFunc("/problems/{id}", handlers.UpdateProblem).Methods("PUT", "OPTIONS")
 	api.HandleFunc("/problems/{id}", handlers.DeleteProblem).Methods("DELETE", "OPTIONS")
-	
+
 	// AI routes
 	api.HandleFunc("/ai/generate-problem", handlers.GenerateProblem).Methods("POST", "OPTIONS")
+	api.HandleFunc("/ai/generate-category-description", handlers.GenerateCategoryDescription).Methods("POST", "OPTIONS")
+	api.HandleFunc("/ai/generate-pattern-content", handlers.GeneratePatternContent).Methods("POST", "OPTIONS")
 
 	// Health check
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods("GET")
-	
+
 	// Debug endpoint to check if user exists (remove in production)
 	router.HandleFunc("/api/debug/user-exists", func(w http.ResponseWriter, r *http.Request) {
 		email := r.URL.Query().Get("email")
@@ -88,13 +91,13 @@ func main() {
 			respondWithError(w, http.StatusBadRequest, "Email parameter required")
 			return
 		}
-		
+
 		var userID string
 		var storedEmail string
 		err := db.DB.QueryRow("SELECT id, email FROM users WHERE email = ? OR LOWER(email) = LOWER(?)", email, email).Scan(&userID, &storedEmail)
 		if err == sql.ErrNoRows {
 			respondWithJSON(w, http.StatusOK, map[string]interface{}{
-				"exists": false,
+				"exists":  false,
 				"message": "User not found",
 			})
 			return
@@ -103,11 +106,11 @@ func main() {
 			respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
 			return
 		}
-		
+
 		respondWithJSON(w, http.StatusOK, map[string]interface{}{
 			"exists": true,
-			"id": userID,
-			"email": storedEmail,
+			"id":     userID,
+			"email":  storedEmail,
 		})
 	}).Methods("GET", "OPTIONS")
 
@@ -121,7 +124,7 @@ func main() {
 // corsMiddleware handles CORS
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Set CORS headers
+		// Set CORS headers for all requests
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")

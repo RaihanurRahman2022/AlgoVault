@@ -13,6 +13,7 @@ export interface Pattern {
   name: string;
   icon: string;
   description: string;
+  theory?: string; // Markdown content
   problemCount?: number;
 }
 

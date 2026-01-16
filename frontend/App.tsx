@@ -116,14 +116,15 @@ const App: React.FC = () => {
           />
         )}
 
-        {viewState === ViewState.PROBLEMS && selectedPattern && (
+        {viewState === ViewState.PROBLEMS && selectedPattern && selectedCategory && (
           <PatternDetail 
             pattern={selectedPattern}
+            categoryName={selectedCategory.name}
             onSelectProblem={(prob) => {
               setSelectedProblem(prob);
               setViewState(ViewState.PROBLEM_DETAIL);
             }}
-            onProblemUpdated={() => {
+            onPatternUpdated={() => {
               // Refresh will happen automatically when navigating back
             }}
             isDemoUser={user?.role === 'demo'}

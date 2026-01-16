@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
 import { Pattern } from '../types';
-import { X } from 'lucide-react';
+import { api } from '../services/apiService';
+import { X, Sparkles, Loader2 } from 'lucide-react';
 
 interface PatternFormProps {
   pattern?: Pattern;
   categoryId: string;
+  categoryName: string;
   onSave: (pattern: Partial<Pattern>) => Promise<void>;
   onClose: () => void;
 }
 
-const PatternForm: React.FC<PatternFormProps> = ({ pattern, categoryId, onSave, onClose }) => {
+const PatternForm: React.FC<PatternFormProps> = ({ pattern, categoryId, categoryName, onSave, onClose }) => {
   const [name, setName] = useState(pattern?.name || '');
   const [icon, setIcon] = useState(pattern?.icon || 'Code2');
   const [description, setDescription] = useState(pattern?.description || '');
   const [loading, setLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,7 +72,42 @@ const PatternForm: React.FC<PatternFormProps> = ({ pattern, categoryId, onSave, 
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Description</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-slate-300">Description</label>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!name.trim()) {
+                    alert('Please enter a pattern name first');
+                    return;
+                  }
+                  setIsGenerating(true);
+                  try {
+                    const response = await api.generatePatternContent(name, categoryName, 'description');
+                    setDescription(response.content);
+                  } catch (error) {
+                    console.error('Error generating description:', error);
+                    alert('Failed to generate description. Please try again.');
+                  } finally {
+                    setIsGenerating(false);
+                  }
+                }}
+                disabled={isGenerating || !name.trim()}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 rounded text-xs font-medium transition-colors disabled:opacity-50"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={12} />
+                    Generate with AI
+                  </>
+                )}
+              </button>
+            </div>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}

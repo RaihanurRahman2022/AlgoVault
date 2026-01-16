@@ -155,6 +155,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({ category, onSelectPatte
         <PatternForm
           pattern={editingPattern}
           categoryId={category.id}
+          categoryName={category.name}
           onSave={async (pattern) => {
             if (editingPattern) {
               await api.updatePattern(editingPattern.id, pattern);
