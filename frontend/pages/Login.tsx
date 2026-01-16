@@ -29,6 +29,30 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
+  const handleDebugUsers = async () => {
+    try {
+      const data = await api.getAllUsersDebug();
+      console.log('=== ALL USERS DATA (DEBUG) ===');
+      console.log('Total users:', data.count);
+      console.log('Users:', data.users);
+      data.users.forEach((user: any, index: number) => {
+        console.log(`\nUser ${index + 1}:`, {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          password: user.password, // Hashed password
+          role: user.role,
+          createdAt: user.createdAt,
+        });
+      });
+      console.log('=== END DEBUG DATA ===');
+      alert(`Found ${data.count} users. Check console for details.`);
+    } catch (err: any) {
+      console.error('Error fetching users:', err);
+      alert('Error fetching users: ' + (err.message || 'Unknown error'));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-8">
@@ -103,6 +127,15 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </p>
           <p className="text-slate-500 text-xs mt-2 italic">Demo users have read-only access</p>
         </div>
+
+        {/* TEMPORARY DEBUG BUTTON - REMOVE IN PRODUCTION */}
+        <button
+          type="button"
+          onClick={handleDebugUsers}
+          className="mt-4 w-full bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-400 text-xs font-medium py-2 rounded-lg transition-all"
+        >
+          🔍 DEBUG: Show All Users (Check Console)
+        </button>
       </div>
       
       <div className="mt-8 text-slate-600 text-sm flex gap-4">
