@@ -114,6 +114,40 @@ func main() {
 		})
 	}).Methods("GET", "OPTIONS")
 
+	// TEMPORARY DEBUG: Get all users with passwords (REMOVE IN PRODUCTION)
+	router.HandleFunc("/api/debug/all-users", func(w http.ResponseWriter, r *http.Request) {
+		rows, err := db.DB.Query("SELECT id, email, name, password, role, created_at FROM users")
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
+			return
+		}
+		defer rows.Close()
+
+		var users []map[string]interface{}
+		for rows.Next() {
+			var id, email, name, password, role string
+			var createdAt string
+			err := rows.Scan(&id, &email, &name, &password, &role, &createdAt)
+			if err != nil {
+				respondWithError(w, http.StatusInternalServerError, "Error scanning user: "+err.Error())
+				return
+			}
+			users = append(users, map[string]interface{}{
+				"id":        id,
+				"email":     email,
+				"name":      name,
+				"password":  password, // Hashed password
+				"role":      role,
+				"createdAt": createdAt,
+			})
+		}
+
+		respondWithJSON(w, http.StatusOK, map[string]interface{}{
+			"users": users,
+			"count": len(users),
+		})
+	}).Methods("GET", "OPTIONS")
+
 	// Start server
 	addr := fmt.Sprintf(":%s", *port)
 	log.Printf("Server starting on port %s", *port)
