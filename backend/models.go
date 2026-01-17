@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -92,61 +91,44 @@ func NewDatabase(dbPath string) (*Database, error) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL != "" {
 		// Use PostgreSQL
-		log.Printf("Connecting to PostgreSQL...")
 		db, err = sql.Open("postgres", databaseURL)
 		isPostgres = true
 		if err != nil {
 			return nil, fmt.Errorf("failed to open PostgreSQL connection: %v", err)
 		}
-		log.Printf("PostgreSQL connection opened")
+		db.SetMaxOpenConns(10)
+		db.SetMaxIdleConns(5)
 	} else {
 		// Use SQLite with WAL mode and busy timeout
-		log.Printf("Connecting to SQLite at: %s", dbPath)
 		db, err = sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
 		isPostgres = false
 		if err != nil {
 			return nil, fmt.Errorf("failed to open SQLite connection: %v", err)
 		}
-		log.Printf("SQLite connection opened")
-	}
-
-	// Set connection pool settings
-	if isPostgres {
-		db.SetMaxOpenConns(10)
-		db.SetMaxIdleConns(5)
-	} else {
 		// SQLite doesn't handle multiple connections well
 		db.SetMaxOpenConns(1)
 		db.SetMaxIdleConns(1)
 	}
 
-	log.Printf("Pinging database...")
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %v", err)
 	}
-	log.Printf("Database ping successful")
 
 	database := &Database{DB: db, IsPostgres: isPostgres}
 	
-	log.Printf("Initializing schema...")
 	if err := database.InitSchema(isPostgres); err != nil {
 		return nil, fmt.Errorf("failed to initialize schema: %v", err)
 	}
-	log.Printf("Schema initialized")
 
 	// Run migrations for existing databases
-	log.Printf("Running migrations...")
 	if err := database.migrate(isPostgres); err != nil {
 		return nil, fmt.Errorf("failed to run migrations: %v", err)
 	}
-	log.Printf("Migrations completed")
 
 	// Create demo user if it doesn't exist
-	log.Printf("Creating demo user...")
 	if err := database.createDemoUser(); err != nil {
 		return nil, fmt.Errorf("failed to create demo user: %v", err)
 	}
-	log.Printf("Demo user check completed")
 
 	return database, nil
 }

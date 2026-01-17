@@ -36,14 +36,12 @@ func main() {
 		log.Printf("Using SQLite")
 	}
 
-	// Initialize database (synchronous - was working before)
-	log.Printf("Initializing database...")
+	// Initialize database
 	db, err := NewDatabase(*dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
-	log.Printf("Database initialized successfully")
 
 	// Initialize handlers
 	handlers := &Handlers{
