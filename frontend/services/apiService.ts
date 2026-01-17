@@ -55,15 +55,6 @@ export const api = {
     });
     return handleResponse(response);
   },
-
-  // TEMPORARY DEBUG: Get all users (REMOVE IN PRODUCTION)
-  getAllUsersDebug: async (): Promise<{ users: any[], count: number }> => {
-    const response = await fetch(`${API_BASE_URL}/debug/all-users`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    return handleResponse(response);
-  },
   
   // Categories
   getCategories: async (): Promise<Category[]> => {
