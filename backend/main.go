@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/gorilla/mux"
 )
@@ -45,20 +46,32 @@ func main() {
 
 	// Initialize database in background (non-blocking)
 	var db *Database
-	dbReady := make(chan bool, 1)
+	var dbErr error
+	var dbMutex sync.RWMutex
+	dbReady := false
+
 	go func() {
 		log.Printf("Initializing database...")
 		var err error
 		db, err = NewDatabase(*dbPath)
+		dbMutex.Lock()
 		if err != nil {
 			log.Printf("ERROR: Failed to initialize database: %v", err)
-			dbReady <- false
-			return
+			dbErr = err
+		} else {
+			log.Printf("Database initialized successfully")
+			handlers.DB = db
+			dbReady = true
 		}
-		log.Printf("Database initialized successfully")
-		handlers.DB = db
-		dbReady <- true
+		dbMutex.Unlock()
 	}()
+
+	// Helper function to check DB readiness
+	checkDBReady := func() bool {
+		dbMutex.RLock()
+		defer dbMutex.RUnlock()
+		return dbReady && handlers.DB != nil
+	}
 
 	// Setup router
 	router := mux.NewRouter()
@@ -66,26 +79,43 @@ func main() {
 	// CORS middleware - must be first
 	router.Use(corsMiddleware)
 
-	// Public routes
-	router.HandleFunc("/api/login", handlers.Login).Methods("POST", "OPTIONS")
-	router.HandleFunc("/api/register", handlers.Register).Methods("POST", "OPTIONS")
+	// Public routes - with DB readiness check
+	router.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
+		if !checkDBReady() {
+			if dbErr != nil {
+				respondWithError(w, http.StatusServiceUnavailable, "Database initialization failed")
+			} else {
+				respondWithError(w, http.StatusServiceUnavailable, "Database is initializing, please try again in a moment")
+			}
+			return
+		}
+		handlers.Login(w, r)
+	}).Methods("POST", "OPTIONS")
+
+	router.HandleFunc("/api/register", func(w http.ResponseWriter, r *http.Request) {
+		if !checkDBReady() {
+			if dbErr != nil {
+				respondWithError(w, http.StatusServiceUnavailable, "Database initialization failed")
+			} else {
+				respondWithError(w, http.StatusServiceUnavailable, "Database is initializing, please try again in a moment")
+			}
+			return
+		}
+		handlers.Register(w, r)
+	}).Methods("POST", "OPTIONS")
 
 	// Protected routes - check DB readiness
 	api := router.PathPrefix("/api").Subrouter()
 	api.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if DB is ready
-			if handlers.DB == nil {
-				select {
-				case ready := <-dbReady:
-					if !ready {
-						respondWithError(w, http.StatusServiceUnavailable, "Database initialization failed")
-						return
-					}
-				default:
+			if !checkDBReady() {
+				if dbErr != nil {
+					respondWithError(w, http.StatusServiceUnavailable, "Database initialization failed")
+				} else {
 					respondWithError(w, http.StatusServiceUnavailable, "Database is initializing, please try again in a moment")
-					return
 				}
+				return
 			}
 			AuthMiddleware(*jwtSecret, handlers.DB)(next).ServeHTTP(w, r)
 		})
@@ -126,8 +156,12 @@ func main() {
 
 	// Debug endpoint to check if user exists (remove in production)
 	router.HandleFunc("/api/debug/user-exists", func(w http.ResponseWriter, r *http.Request) {
-		if handlers.DB == nil {
-			respondWithError(w, http.StatusServiceUnavailable, "Database is initializing")
+		if !checkDBReady() {
+			if dbErr != nil {
+				respondWithError(w, http.StatusServiceUnavailable, "Database initialization failed")
+			} else {
+				respondWithError(w, http.StatusServiceUnavailable, "Database is initializing")
+			}
 			return
 		}
 		email := r.URL.Query().Get("email")
