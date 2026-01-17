@@ -36,21 +36,29 @@ func main() {
 		log.Printf("Using SQLite")
 	}
 
-	// Initialize database
-	log.Printf("Initializing database...")
-	db, err := NewDatabase(*dbPath)
-	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-	log.Printf("Database initialized successfully")
-
-	// Initialize handlers
+	// Initialize handlers (DB will be set once ready)
 	handlers := &Handlers{
-		DB:        db,
+		DB:        nil, // Will be set once DB is ready
 		JWTSecret: *jwtSecret,
 		AIAPIKey:  *aiAPIKey,
 	}
+
+	// Initialize database in background (non-blocking)
+	var db *Database
+	dbReady := make(chan bool, 1)
+	go func() {
+		log.Printf("Initializing database...")
+		var err error
+		db, err = NewDatabase(*dbPath)
+		if err != nil {
+			log.Printf("ERROR: Failed to initialize database: %v", err)
+			dbReady <- false
+			return
+		}
+		log.Printf("Database initialized successfully")
+		handlers.DB = db
+		dbReady <- true
+	}()
 
 	// Setup router
 	router := mux.NewRouter()
@@ -62,9 +70,26 @@ func main() {
 	router.HandleFunc("/api/login", handlers.Login).Methods("POST", "OPTIONS")
 	router.HandleFunc("/api/register", handlers.Register).Methods("POST", "OPTIONS")
 
-	// Protected routes
+	// Protected routes - check DB readiness
 	api := router.PathPrefix("/api").Subrouter()
-	api.Use(AuthMiddleware(*jwtSecret, db))
+	api.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Check if DB is ready
+			if handlers.DB == nil {
+				select {
+				case ready := <-dbReady:
+					if !ready {
+						respondWithError(w, http.StatusServiceUnavailable, "Database initialization failed")
+						return
+					}
+				default:
+					respondWithError(w, http.StatusServiceUnavailable, "Database is initializing, please try again in a moment")
+					return
+				}
+			}
+			AuthMiddleware(*jwtSecret, handlers.DB)(next).ServeHTTP(w, r)
+		})
+	})
 
 	// Category routes
 	api.HandleFunc("/categories", handlers.GetCategories).Methods("GET", "OPTIONS")
@@ -91,14 +116,20 @@ func main() {
 	api.HandleFunc("/ai/generate-category-description", handlers.GenerateCategoryDescription).Methods("POST", "OPTIONS")
 	api.HandleFunc("/ai/generate-pattern-content", handlers.GeneratePatternContent).Methods("POST", "OPTIONS")
 
-	// Health check
+	// Health check - returns OK immediately so Render can detect the port
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		// Always return OK for health check so Render can detect the port
+		// The actual API will check DB readiness
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}).Methods("GET")
 
 	// Debug endpoint to check if user exists (remove in production)
 	router.HandleFunc("/api/debug/user-exists", func(w http.ResponseWriter, r *http.Request) {
+		if handlers.DB == nil {
+			respondWithError(w, http.StatusServiceUnavailable, "Database is initializing")
+			return
+		}
 		email := r.URL.Query().Get("email")
 		if email == "" {
 			respondWithError(w, http.StatusBadRequest, "Email parameter required")
@@ -107,7 +138,7 @@ func main() {
 
 		var userID string
 		var storedEmail string
-		err := db.DB.QueryRow("SELECT id, email FROM users WHERE email = ? OR LOWER(email) = LOWER(?)", email, email).Scan(&userID, &storedEmail)
+		err := handlers.DB.DB.QueryRow("SELECT id, email FROM users WHERE email = ? OR LOWER(email) = LOWER(?)", email, email).Scan(&userID, &storedEmail)
 		if err == sql.ErrNoRows {
 			respondWithJSON(w, http.StatusOK, map[string]interface{}{
 				"exists":  false,
@@ -132,6 +163,13 @@ func main() {
 	addr := fmt.Sprintf("0.0.0.0:%s", *port)
 	log.Printf("Server starting on %s", addr)
 	log.Printf("Health check available at: http://0.0.0.0:%s/health", *port)
+
+	// Cleanup on shutdown
+	defer func() {
+		if db != nil {
+			db.Close()
+		}
+	}()
 
 	if err := http.ListenAndServe(addr, router); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
