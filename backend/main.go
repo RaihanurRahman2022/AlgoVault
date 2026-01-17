@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -36,16 +38,9 @@ func main() {
 		log.Printf("Using SQLite")
 	}
 
-	// Initialize database
-	db, err := NewDatabase(*dbPath)
-	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
-	// Initialize handlers
+	// Initialize handlers (DB will be set once ready)
 	handlers := &Handlers{
-		DB:        db,
+		DB:        nil,
 		JWTSecret: *jwtSecret,
 		AIAPIKey:  *aiAPIKey,
 	}
@@ -56,13 +51,60 @@ func main() {
 	// CORS middleware - must be first
 	router.Use(corsMiddleware)
 
-	// Public routes
-	router.HandleFunc("/api/login", handlers.Login).Methods("POST", "OPTIONS")
-	router.HandleFunc("/api/register", handlers.Register).Methods("POST", "OPTIONS")
+	// Initialize database in background
+	var db *Database
+	var dbMutex sync.RWMutex
+	dbReady := false
+	dbReadyChan := make(chan bool, 1)
 
-	// Protected routes
+	go func() {
+		var err error
+		db, err = NewDatabase(*dbPath)
+		if err != nil {
+			log.Fatalf("Failed to initialize database: %v", err)
+		}
+		dbMutex.Lock()
+		handlers.DB = db
+		dbReady = true
+		dbMutex.Unlock()
+		dbReadyChan <- true
+		log.Printf("Database ready")
+	}()
+
+	checkDBReady := func() bool {
+		dbMutex.RLock()
+		defer dbMutex.RUnlock()
+		return dbReady && handlers.DB != nil
+	}
+
+	// Public routes with DB check
+	router.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
+		if !checkDBReady() {
+			respondWithError(w, http.StatusServiceUnavailable, "Database initializing, please wait...")
+			return
+		}
+		handlers.Login(w, r)
+	}).Methods("POST", "OPTIONS")
+
+	router.HandleFunc("/api/register", func(w http.ResponseWriter, r *http.Request) {
+		if !checkDBReady() {
+			respondWithError(w, http.StatusServiceUnavailable, "Database initializing, please wait...")
+			return
+		}
+		handlers.Register(w, r)
+	}).Methods("POST", "OPTIONS")
+
+	// Protected routes with DB check
 	api := router.PathPrefix("/api").Subrouter()
-	api.Use(AuthMiddleware(*jwtSecret, db))
+	api.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !checkDBReady() {
+				respondWithError(w, http.StatusServiceUnavailable, "Database initializing, please wait...")
+				return
+			}
+			AuthMiddleware(*jwtSecret, db)(next).ServeHTTP(w, r)
+		})
+	})
 
 	// Category routes
 	api.HandleFunc("/categories", handlers.GetCategories).Methods("GET", "OPTIONS")
@@ -99,6 +141,10 @@ func main() {
 
 	// Debug endpoint to check if user exists (remove in production)
 	router.HandleFunc("/api/debug/user-exists", func(w http.ResponseWriter, r *http.Request) {
+		if !checkDBReady() {
+			respondWithError(w, http.StatusServiceUnavailable, "Database initializing")
+			return
+		}
 		email := r.URL.Query().Get("email")
 		if email == "" {
 			respondWithError(w, http.StatusBadRequest, "Email parameter required")
@@ -127,11 +173,9 @@ func main() {
 		})
 	}).Methods("GET", "OPTIONS")
 
-	// Start server
-	// Bind to 0.0.0.0 to accept connections from all interfaces (required for Render)
+	// Start server immediately (so Render can detect port)
 	addr := fmt.Sprintf("0.0.0.0:%s", *port)
 	log.Printf("Server starting on %s", addr)
-	log.Printf("Health check available at: http://0.0.0.0:%s/health", *port)
 
 	// Cleanup on shutdown
 	defer func() {
@@ -140,8 +184,25 @@ func main() {
 		}
 	}()
 
-	if err := http.ListenAndServe(addr, router); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+	// Start server in goroutine so we can wait for DB
+	serverErr := make(chan error, 1)
+	go func() {
+		if err := http.ListenAndServe(addr, router); err != nil {
+			serverErr <- err
+		}
+	}()
+
+	// Wait a moment for server to start
+	time.Sleep(100 * time.Millisecond)
+	log.Printf("Server listening, waiting for database...")
+
+	// Wait for database to be ready
+	<-dbReadyChan
+	log.Printf("Database ready, server fully operational")
+
+	// Wait for server error
+	if err := <-serverErr; err != nil {
+		log.Fatalf("Server failed: %v", err)
 	}
 }
 
