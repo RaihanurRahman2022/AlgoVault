@@ -2,10 +2,13 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
+	"os"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
+	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // User represents a user in the system
@@ -73,27 +76,54 @@ type Problem struct {
 
 // Database represents the database connection and operations
 type Database struct {
-	DB *sql.DB
+	DB        *sql.DB
+	IsPostgres bool
 }
 
 // NewDatabase creates a new database connection
+// Uses PostgreSQL if DATABASE_URL is set, otherwise uses SQLite
 func NewDatabase(dbPath string) (*Database, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	var db *sql.DB
+	var err error
+	var isPostgres bool
+
+	// Check if DATABASE_URL is set (PostgreSQL)
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL != "" {
+		// Use PostgreSQL
+		db, err = sql.Open("postgres", databaseURL)
+		isPostgres = true
+	} else {
+		// Use SQLite with WAL mode and busy timeout
+		db, err = sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
+		isPostgres = false
+	}
+
 	if err != nil {
 		return nil, err
+	}
+
+	// Set connection pool settings
+	if isPostgres {
+		db.SetMaxOpenConns(10)
+		db.SetMaxIdleConns(5)
+	} else {
+		// SQLite doesn't handle multiple connections well
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
 	}
 
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}
 
-	database := &Database{DB: db}
-	if err := database.InitSchema(); err != nil {
+	database := &Database{DB: db, IsPostgres: isPostgres}
+	if err := database.InitSchema(isPostgres); err != nil {
 		return nil, err
 	}
 
 	// Run migrations for existing databases
-	if err := database.migrate(); err != nil {
+	if err := database.migrate(isPostgres); err != nil {
 		return nil, err
 	}
 
@@ -106,7 +136,15 @@ func NewDatabase(dbPath string) (*Database, error) {
 }
 
 // InitSchema creates all necessary tables
-func (d *Database) InitSchema() error {
+// Supports both SQLite and PostgreSQL
+func (d *Database) InitSchema(isPostgres bool) error {
+	var timestampType string
+	if isPostgres {
+		timestampType = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+	} else {
+		timestampType = "DATETIME DEFAULT CURRENT_TIMESTAMP"
+	}
+
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			id TEXT PRIMARY KEY,
@@ -114,15 +152,15 @@ func (d *Database) InitSchema() error {
 			name TEXT NOT NULL,
 			password TEXT NOT NULL,
 			role TEXT NOT NULL DEFAULT 'admin',
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			created_at ` + timestampType + `
 		)`,
 		`CREATE TABLE IF NOT EXISTS categories (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
 			icon TEXT NOT NULL,
 			description TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			created_at ` + timestampType + `,
+			updated_at ` + timestampType + `
 		)`,
 		`CREATE TABLE IF NOT EXISTS patterns (
 			id TEXT PRIMARY KEY,
@@ -131,8 +169,8 @@ func (d *Database) InitSchema() error {
 			icon TEXT NOT NULL,
 			description TEXT NOT NULL,
 			theory TEXT DEFAULT '',
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			created_at ` + timestampType + `,
+			updated_at ` + timestampType + `,
 			FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
 		)`,
 		`CREATE TABLE IF NOT EXISTS problems (
@@ -148,8 +186,8 @@ func (d *Database) InitSchema() error {
 			sample_output TEXT NOT NULL,
 			explanation TEXT NOT NULL,
 			notes TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			created_at ` + timestampType + `,
+			updated_at ` + timestampType + `,
 			FOREIGN KEY (pattern_id) REFERENCES patterns(id) ON DELETE CASCADE
 		)`,
 		`CREATE TABLE IF NOT EXISTS solutions (
@@ -157,8 +195,8 @@ func (d *Database) InitSchema() error {
 			problem_id TEXT NOT NULL,
 			language TEXT NOT NULL,
 			code TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			created_at ` + timestampType + `,
+			updated_at ` + timestampType + `,
 			FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE,
 			UNIQUE(problem_id, language)
 		)`,
@@ -177,80 +215,105 @@ func (d *Database) InitSchema() error {
 }
 
 // migrate runs database migrations for existing databases
-func (d *Database) migrate() error {
-	// Check if role column exists by querying the table schema
-	rows, err := d.DB.Query("PRAGMA table_info(users)")
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	
-	columnExists := false
-	for rows.Next() {
-		var cid int
-		var name, dataType string
-		var notNull int
-		var defaultValue sql.NullString
-		var pk int
-		
-		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+func (d *Database) migrate(isPostgres bool) error {
+	// Check if role column exists
+	var columnExists bool
+	var err error
+
+	if isPostgres {
+		// PostgreSQL: Check if column exists
+		err = d.DB.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns 
+				WHERE table_name = 'users' AND column_name = 'role'
+			)
+		`).Scan(&columnExists)
+	} else {
+		// SQLite: Use PRAGMA
+		rows, err := d.DB.Query("PRAGMA table_info(users)")
+		if err != nil {
 			return err
 		}
+		defer rows.Close()
 		
-		if name == "role" {
-			columnExists = true
-			break
+		columnExists = false
+		for rows.Next() {
+			var cid int
+			var name, dataType string
+			var notNull int
+			var defaultValue sql.NullString
+			var pk int
+			
+			if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+				return err
+			}
+			
+			if name == "role" {
+				columnExists = true
+				break
+			}
 		}
+	}
+
+	if err != nil {
+		return err
 	}
 	
 	if !columnExists {
 		// Column doesn't exist, add it
-		// SQLite allows adding a column with DEFAULT even if table has rows
-		_, err = d.DB.Exec(`
-			ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'admin'
-		`)
+		_, err = d.DB.Exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'admin'`)
 		if err != nil {
 			return err
 		}
 
-		// Update any existing NULL values to 'admin' (shouldn't be needed with DEFAULT, but just in case)
-		_, err = d.DB.Exec(`
-			UPDATE users SET role = 'admin' WHERE role IS NULL
-		`)
+		// Update any existing NULL values to 'admin'
+		_, err = d.DB.Exec(`UPDATE users SET role = 'admin' WHERE role IS NULL`)
 		if err != nil {
 			return err
 		}
 	}
 
 	// Migrate patterns table to add theory column
-	patternRows, err := d.DB.Query("PRAGMA table_info(patterns)")
+	var theoryColumnExists bool
+	if isPostgres {
+		err = d.DB.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1 FROM information_schema.columns 
+				WHERE table_name = 'patterns' AND column_name = 'theory'
+			)
+		`).Scan(&theoryColumnExists)
+	} else {
+		patternRows, err := d.DB.Query("PRAGMA table_info(patterns)")
+		if err != nil {
+			return err
+		}
+		defer patternRows.Close()
+
+		theoryColumnExists = false
+		for patternRows.Next() {
+			var cid int
+			var name, dataType string
+			var notNull int
+			var defaultValue sql.NullString
+			var pk int
+
+			if err := patternRows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+				return err
+			}
+
+			if name == "theory" {
+				theoryColumnExists = true
+				break
+			}
+		}
+	}
+
 	if err != nil {
 		return err
 	}
-	defer patternRows.Close()
-
-	theoryColumnExists := false
-	for patternRows.Next() {
-		var cid int
-		var name, dataType string
-		var notNull int
-		var defaultValue sql.NullString
-		var pk int
-
-		if err := patternRows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
-			return err
-		}
-
-		if name == "theory" {
-			theoryColumnExists = true
-			break
-		}
-	}
 
 	if !theoryColumnExists {
-		_, err = d.DB.Exec(`
-			ALTER TABLE patterns ADD COLUMN theory TEXT DEFAULT ''
-		`)
+		_, err = d.DB.Exec(`ALTER TABLE patterns ADD COLUMN theory TEXT DEFAULT ''`)
 		if err != nil {
 			return err
 		}
@@ -259,11 +322,31 @@ func (d *Database) migrate() error {
 	return nil
 }
 
+// convertPlaceholders converts SQLite placeholders (?) to PostgreSQL placeholders ($1, $2, ...)
+func (d *Database) convertPlaceholders(query string) string {
+	if !d.IsPostgres {
+		return query // SQLite uses ?
+	}
+	// Convert ? to $1, $2, etc. for PostgreSQL
+	placeholderNum := 1
+	result := ""
+	for i := 0; i < len(query); i++ {
+		if query[i] == '?' {
+			result += "$" + fmt.Sprintf("%d", placeholderNum)
+			placeholderNum++
+		} else {
+			result += string(query[i])
+		}
+	}
+	return result
+}
+
 // createDemoUser creates a demo user with read-only access
 func (d *Database) createDemoUser() error {
 	// Check if demo user already exists
 	var existingID string
-	err := d.DB.QueryRow("SELECT id FROM users WHERE email = ?", "demo@algovault.com").Scan(&existingID)
+	query := d.convertPlaceholders("SELECT id FROM users WHERE email = ?")
+	err := d.DB.QueryRow(query, "demo@algovault.com").Scan(&existingID)
 	if err == nil {
 		// Demo user already exists
 		return nil
@@ -279,10 +362,8 @@ func (d *Database) createDemoUser() error {
 	}
 
 	demoUserID := "demo-user-001"
-	_, err = d.DB.Exec(
-		"INSERT INTO users (id, email, name, password, role) VALUES (?, ?, ?, ?, ?)",
-		demoUserID, "demo@algovault.com", "Demo User", string(hashedPassword), "demo",
-	)
+	query = d.convertPlaceholders("INSERT INTO users (id, email, name, password, role) VALUES (?, ?, ?, ?, ?)")
+	_, err = d.DB.Exec(query, demoUserID, "demo@algovault.com", "Demo User", string(hashedPassword), "demo")
 	return err
 }
 
