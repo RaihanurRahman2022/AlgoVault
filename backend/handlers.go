@@ -888,7 +888,8 @@ func (h *Handlers) GenerateCategoryDescription(w http.ResponseWriter, r *http.Re
 	}
 	
 	var req struct {
-		Name string `json:"name"`
+		Name   string `json:"name"`
+		Prompt string `json:"prompt"` // Optional user prompt
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
@@ -900,7 +901,7 @@ func (h *Handlers) GenerateCategoryDescription(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	prompt := fmt.Sprintf("Generate a comprehensive description for a coding problem category named \"%s\". \n\n"+
+	basePrompt := fmt.Sprintf("Generate a comprehensive description for a coding problem category named \"%s\". \n\n"+
 		"The description should:\n"+
 		"- Explain what types of problems belong to this category\n"+
 		"- Describe the common characteristics and patterns\n"+
@@ -909,6 +910,14 @@ func (h *Handlers) GenerateCategoryDescription(w http.ResponseWriter, r *http.Re
 		"- Be clear, concise, and informative\n"+
 		"- Be written in markdown format with proper code blocks\n\n"+
 		"Format the response in markdown. Include C++ code examples in code blocks marked as ```cpp. Return ONLY the markdown content, no JSON wrapper.", req.Name)
+
+	// Add user's custom prompt if provided
+	var prompt string
+	if req.Prompt != "" && strings.TrimSpace(req.Prompt) != "" {
+		prompt = fmt.Sprintf("%s\n\nAdditional instructions from user: %s", basePrompt, req.Prompt)
+	} else {
+		prompt = basePrompt
+	}
 
 	content, err := h.callAI(prompt)
 	if err != nil {
@@ -930,6 +939,7 @@ func (h *Handlers) GeneratePatternContent(w http.ResponseWriter, r *http.Request
 		Name         string `json:"name"`
 		CategoryName string `json:"categoryName"`
 		ContentType  string `json:"contentType"` // "description" or "theory"
+		Prompt       string `json:"prompt"`      // Optional user prompt
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request body")
@@ -941,9 +951,9 @@ func (h *Handlers) GeneratePatternContent(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var prompt string
+	var basePrompt string
 	if req.ContentType == "theory" {
-		prompt = fmt.Sprintf("Generate comprehensive theory content for the algorithm pattern \"%s\" in the category \"%s\".\n\n"+
+		basePrompt = fmt.Sprintf("Generate comprehensive theory content for the algorithm pattern \"%s\" in the category \"%s\".\n\n"+
 			"The theory should include:\n"+
 			"- Detailed explanation of the pattern\n"+
 			"- When to use this pattern\n"+
@@ -956,7 +966,7 @@ func (h *Handlers) GeneratePatternContent(w http.ResponseWriter, r *http.Request
 			"Provide at least one complete, working C++ implementation example that demonstrates the pattern.\n"+
 			"Format the response in markdown with proper headings. Return ONLY the markdown content, no JSON wrapper.", req.Name, req.CategoryName)
 	} else {
-		prompt = fmt.Sprintf("Generate a concise description for the algorithm pattern \"%s\" in the category \"%s\".\n\n"+
+		basePrompt = fmt.Sprintf("Generate a concise description for the algorithm pattern \"%s\" in the category \"%s\".\n\n"+
 			"The description should:\n"+
 			"- Briefly explain what this pattern is\n"+
 			"- Mention key characteristics\n"+
@@ -964,6 +974,14 @@ func (h *Handlers) GeneratePatternContent(w http.ResponseWriter, r *http.Request
 			"- Include a simple C++ code snippet example\n"+
 			"- Be clear and concise (2-3 sentences plus code example)\n\n"+
 			"Format the response in markdown. Include a C++ code example in a code block marked as ```cpp. Return ONLY the markdown content, no JSON wrapper.", req.Name, req.CategoryName)
+	}
+
+	// Add user's custom prompt if provided
+	var prompt string
+	if req.Prompt != "" && strings.TrimSpace(req.Prompt) != "" {
+		prompt = fmt.Sprintf("%s\n\nAdditional instructions from user: %s", basePrompt, req.Prompt)
+	} else {
+		prompt = basePrompt
 	}
 
 	content, err := h.callAI(prompt)

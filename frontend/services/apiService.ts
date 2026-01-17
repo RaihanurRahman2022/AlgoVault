@@ -194,20 +194,20 @@ export const api = {
     return handleResponse(response);
   },
 
-  generateCategoryDescription: async (name: string): Promise<{ description: string }> => {
+  generateCategoryDescription: async (name: string, prompt?: string): Promise<{ description: string }> => {
     const response = await fetch(`${API_BASE_URL}/ai/generate-category-description`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, prompt: prompt || '' }),
     });
     return handleResponse(response);
   },
 
-  generatePatternContent: async (name: string, categoryName: string, contentType: 'description' | 'theory'): Promise<{ content: string }> => {
+  generatePatternContent: async (name: string, categoryName: string, contentType: 'description' | 'theory', prompt?: string): Promise<{ content: string }> => {
     const response = await fetch(`${API_BASE_URL}/ai/generate-pattern-content`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ name, categoryName, contentType }),
+      body: JSON.stringify({ name, categoryName, contentType, prompt: prompt || '' }),
     });
     return handleResponse(response);
   }

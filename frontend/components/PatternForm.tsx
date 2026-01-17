@@ -17,6 +17,8 @@ const PatternForm: React.FC<PatternFormProps> = ({ pattern, categoryId, category
   const [description, setDescription] = useState(pattern?.description || '');
   const [loading, setLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,36 +78,18 @@ const PatternForm: React.FC<PatternFormProps> = ({ pattern, categoryId, category
               <label className="block text-sm font-medium text-slate-300">Description</label>
               <button
                 type="button"
-                onClick={async () => {
+                onClick={() => {
                   if (!name.trim()) {
                     alert('Please enter a pattern name first');
                     return;
                   }
-                  setIsGenerating(true);
-                  try {
-                    const response = await api.generatePatternContent(name, categoryName, 'description');
-                    setDescription(response.content);
-                  } catch (error) {
-                    console.error('Error generating description:', error);
-                    alert('Failed to generate description. Please try again.');
-                  } finally {
-                    setIsGenerating(false);
-                  }
+                  setShowPromptModal(true);
                 }}
                 disabled={isGenerating || !name.trim()}
                 className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 rounded text-xs font-medium transition-colors disabled:opacity-50"
               >
-                {isGenerating ? (
-                  <>
-                    <Loader2 size={12} className="animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={12} />
-                    Generate with AI
-                  </>
-                )}
+                <Sparkles size={12} />
+                Generate with AI
               </button>
             </div>
             <textarea
@@ -136,6 +120,86 @@ const PatternForm: React.FC<PatternFormProps> = ({ pattern, categoryId, category
           </div>
         </form>
       </div>
+
+      {/* AI Prompt Modal */}
+      {showPromptModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center p-6 border-b border-slate-700">
+              <h3 className="text-lg font-bold text-white">AI Generation Prompt</h3>
+              <button
+                onClick={() => {
+                  setShowPromptModal(false);
+                  setAiPrompt('');
+                }}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Additional Instructions (Optional)
+                </label>
+                <textarea
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  rows={4}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g., Focus on competitive programming, include time complexity analysis, add more examples..."
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Add any specific instructions or context for the AI generation
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPromptModal(false);
+                    setAiPrompt('');
+                  }}
+                  className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setShowPromptModal(false);
+                    setIsGenerating(true);
+                    try {
+                      const response = await api.generatePatternContent(name, categoryName, 'description', aiPrompt);
+                      setDescription(response.content);
+                      setAiPrompt('');
+                    } catch (error) {
+                      console.error('Error generating description:', error);
+                      alert('Failed to generate description. Please try again.');
+                    } finally {
+                      setIsGenerating(false);
+                    }
+                  }}
+                  disabled={isGenerating}
+                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} />
+                      Generate
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
