@@ -25,12 +25,25 @@ func main() {
 	aiAPIKey := flag.String("ai-api-key", getEnv("AI_API_KEY", "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"), "OpenRouter API key")
 	flag.Parse()
 
+	// Log configuration
+	log.Printf("Starting server...")
+	log.Printf("PORT environment variable: %s", os.Getenv("PORT"))
+	log.Printf("Using port: %s", *port)
+	log.Printf("Database path: %s", *dbPath)
+	if os.Getenv("DATABASE_URL") != "" {
+		log.Printf("Using PostgreSQL (DATABASE_URL is set)")
+	} else {
+		log.Printf("Using SQLite")
+	}
+
 	// Initialize database
+	log.Printf("Initializing database...")
 	db, err := NewDatabase(*dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
+	log.Printf("Database initialized successfully")
 
 	// Initialize handlers
 	handlers := &Handlers{
@@ -115,10 +128,14 @@ func main() {
 	}).Methods("GET", "OPTIONS")
 
 	// Start server
-	addr := fmt.Sprintf(":%s", *port)
-	log.Printf("Server starting on port %s", *port)
-	log.Printf("Database: %s", *dbPath)
-	log.Fatal(http.ListenAndServe(addr, router))
+	// Bind to 0.0.0.0 to accept connections from all interfaces (required for Render)
+	addr := fmt.Sprintf("0.0.0.0:%s", *port)
+	log.Printf("Server starting on %s", addr)
+	log.Printf("Health check available at: http://0.0.0.0:%s/health", *port)
+
+	if err := http.ListenAndServe(addr, router); err != nil {
+		log.Fatalf("Server failed to start: %v", err)
+	}
 }
 
 // corsMiddleware handles CORS
