@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"sync"
 
 	"github.com/gorilla/mux"
 )
@@ -37,40 +36,20 @@ func main() {
 		log.Printf("Using SQLite")
 	}
 
-	// Initialize handlers (DB will be set once ready)
+	// Initialize database (synchronous - was working before)
+	log.Printf("Initializing database...")
+	db, err := NewDatabase(*dbPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+	log.Printf("Database initialized successfully")
+
+	// Initialize handlers
 	handlers := &Handlers{
-		DB:        nil, // Will be set once DB is ready
+		DB:        db,
 		JWTSecret: *jwtSecret,
 		AIAPIKey:  *aiAPIKey,
-	}
-
-	// Initialize database in background (non-blocking)
-	var db *Database
-	var dbErr error
-	var dbMutex sync.RWMutex
-	dbReady := false
-
-	go func() {
-		log.Printf("Initializing database...")
-		var err error
-		db, err = NewDatabase(*dbPath)
-		dbMutex.Lock()
-		if err != nil {
-			log.Printf("ERROR: Failed to initialize database: %v", err)
-			dbErr = err
-		} else {
-			log.Printf("Database initialized successfully")
-			handlers.DB = db
-			dbReady = true
-		}
-		dbMutex.Unlock()
-	}()
-
-	// Helper function to check DB readiness
-	checkDBReady := func() bool {
-		dbMutex.RLock()
-		defer dbMutex.RUnlock()
-		return dbReady && handlers.DB != nil
 	}
 
 	// Setup router
@@ -79,47 +58,13 @@ func main() {
 	// CORS middleware - must be first
 	router.Use(corsMiddleware)
 
-	// Public routes - with DB readiness check
-	router.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
-		if !checkDBReady() {
-			if dbErr != nil {
-				respondWithError(w, http.StatusServiceUnavailable, "Database initialization failed")
-			} else {
-				respondWithError(w, http.StatusServiceUnavailable, "Database is initializing, please try again in a moment")
-			}
-			return
-		}
-		handlers.Login(w, r)
-	}).Methods("POST", "OPTIONS")
+	// Public routes
+	router.HandleFunc("/api/login", handlers.Login).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/register", handlers.Register).Methods("POST", "OPTIONS")
 
-	router.HandleFunc("/api/register", func(w http.ResponseWriter, r *http.Request) {
-		if !checkDBReady() {
-			if dbErr != nil {
-				respondWithError(w, http.StatusServiceUnavailable, "Database initialization failed")
-			} else {
-				respondWithError(w, http.StatusServiceUnavailable, "Database is initializing, please try again in a moment")
-			}
-			return
-		}
-		handlers.Register(w, r)
-	}).Methods("POST", "OPTIONS")
-
-	// Protected routes - check DB readiness
+	// Protected routes
 	api := router.PathPrefix("/api").Subrouter()
-	api.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check if DB is ready
-			if !checkDBReady() {
-				if dbErr != nil {
-					respondWithError(w, http.StatusServiceUnavailable, "Database initialization failed")
-				} else {
-					respondWithError(w, http.StatusServiceUnavailable, "Database is initializing, please try again in a moment")
-				}
-				return
-			}
-			AuthMiddleware(*jwtSecret, handlers.DB)(next).ServeHTTP(w, r)
-		})
-	})
+	api.Use(AuthMiddleware(*jwtSecret, db))
 
 	// Category routes
 	api.HandleFunc("/categories", handlers.GetCategories).Methods("GET", "OPTIONS")
@@ -156,14 +101,6 @@ func main() {
 
 	// Debug endpoint to check if user exists (remove in production)
 	router.HandleFunc("/api/debug/user-exists", func(w http.ResponseWriter, r *http.Request) {
-		if !checkDBReady() {
-			if dbErr != nil {
-				respondWithError(w, http.StatusServiceUnavailable, "Database initialization failed")
-			} else {
-				respondWithError(w, http.StatusServiceUnavailable, "Database is initializing")
-			}
-			return
-		}
 		email := r.URL.Query().Get("email")
 		if email == "" {
 			respondWithError(w, http.StatusBadRequest, "Email parameter required")
@@ -172,7 +109,7 @@ func main() {
 
 		var userID string
 		var storedEmail string
-		err := handlers.DB.DB.QueryRow("SELECT id, email FROM users WHERE email = ? OR LOWER(email) = LOWER(?)", email, email).Scan(&userID, &storedEmail)
+		err := db.DB.QueryRow("SELECT id, email FROM users WHERE email = ? OR LOWER(email) = LOWER(?)", email, email).Scan(&userID, &storedEmail)
 		if err == sql.ErrNoRows {
 			respondWithJSON(w, http.StatusOK, map[string]interface{}{
 				"exists":  false,
