@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -16,7 +17,7 @@ type User struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
 	Name      string    `json:"name"`
-	Password  string    `json:"-"` // Never return password in JSON
+	Password  string    `json:"-"`    // Never return password in JSON
 	Role      string    `json:"role"` // "admin" or "demo"
 	CreatedAt time.Time `json:"createdAt"`
 }
@@ -47,12 +48,12 @@ type Pattern struct {
 
 // Solution represents a solution in a specific language
 type Solution struct {
-	ID         string `json:"id"`
-	ProblemID  string `json:"problemId"`
-	Language   string `json:"language"` // cpp, go, python, java, javascript
-	Code       string `json:"code"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID        string    `json:"id"`
+	ProblemID string    `json:"problemId"`
+	Language  string    `json:"language"` // cpp, go, python, java, javascript
+	Code      string    `json:"code"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // Problem represents a coding problem
@@ -60,12 +61,12 @@ type Problem struct {
 	ID           string     `json:"id"`
 	PatternID    string     `json:"patternId"`
 	Title        string     `json:"title"`
-	Difficulty   string     `json:"difficulty"` // Easy, Medium, Hard
-	Description  string     `json:"description"` // Markdown
-	Input        string     `json:"input"`       // Markdown
-	Output       string     `json:"output"`     // Markdown
-	Constraints  string     `json:"constraints"` // Markdown
-	SampleInput  string     `json:"sampleInput"` // Markdown
+	Difficulty   string     `json:"difficulty"`   // Easy, Medium, Hard
+	Description  string     `json:"description"`  // Markdown
+	Input        string     `json:"input"`        // Markdown
+	Output       string     `json:"output"`       // Markdown
+	Constraints  string     `json:"constraints"`  // Markdown
+	SampleInput  string     `json:"sampleInput"`  // Markdown
 	SampleOutput string     `json:"sampleOutput"` // Markdown
 	Explanation  string     `json:"explanation"`  // Markdown
 	Notes        string     `json:"notes"`        // Markdown
@@ -74,9 +75,45 @@ type Problem struct {
 	UpdatedAt    time.Time  `json:"updatedAt"`
 }
 
+// LearningTopic represents a learning category (e.g., LLD, HLD)
+type LearningTopic struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Icon        string    `json:"icon"`
+	Description string    `json:"description"`
+	Slug        string    `json:"slug"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+// LearningResource represents a specific resource within a topic
+type LearningResource struct {
+	ID         string    `json:"id"`
+	TopicID    string    `json:"topicId"`
+	Title      string    `json:"title"`
+	Content    string    `json:"content"` // Markdown
+	Type       string    `json:"type"`    // article, video, link
+	URL        string    `json:"url"`
+	OrderIndex int       `json:"orderIndex"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// RoadmapItem represents a step in a roadmap
+type RoadmapItem struct {
+	ID          string    `json:"id"`
+	TopicID     string    `json:"topicId"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	OrderIndex  int       `json:"orderIndex"`
+	Status      string    `json:"status"` // todo, in-progress, completed
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
 // Database represents the database connection and operations
 type Database struct {
-	DB        *sql.DB
+	DB         *sql.DB
 	IsPostgres bool
 }
 
@@ -115,7 +152,7 @@ func NewDatabase(dbPath string) (*Database, error) {
 	}
 
 	database := &Database{DB: db, IsPostgres: isPostgres}
-	
+
 	if err := database.InitSchema(isPostgres); err != nil {
 		return nil, fmt.Errorf("failed to initialize schema: %v", err)
 	}
@@ -128,6 +165,11 @@ func NewDatabase(dbPath string) (*Database, error) {
 	// Create demo user if it doesn't exist
 	if err := database.createDemoUser(); err != nil {
 		return nil, fmt.Errorf("failed to create demo user: %v", err)
+	}
+
+	// Seed initial learning data
+	if err := database.seedLearningData(); err != nil {
+		log.Printf("Warning: failed to seed learning data: %v", err)
 	}
 
 	return database, nil
@@ -198,9 +240,43 @@ func (d *Database) InitSchema(isPostgres bool) error {
 			FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE,
 			UNIQUE(problem_id, language)
 		)`,
+		`CREATE TABLE IF NOT EXISTS learning_topics (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			icon TEXT NOT NULL,
+			description TEXT NOT NULL,
+			slug TEXT UNIQUE NOT NULL,
+			created_at ` + timestampType + `,
+			updated_at ` + timestampType + `
+		)`,
+		`CREATE TABLE IF NOT EXISTS learning_resources (
+			id TEXT PRIMARY KEY,
+			topic_id TEXT NOT NULL,
+			title TEXT NOT NULL,
+			content TEXT NOT NULL,
+			type TEXT NOT NULL,
+			url TEXT,
+			order_index INTEGER DEFAULT 0,
+			created_at ` + timestampType + `,
+			updated_at ` + timestampType + `,
+			FOREIGN KEY (topic_id) REFERENCES learning_topics(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS roadmap_items (
+			id TEXT PRIMARY KEY,
+			topic_id TEXT NOT NULL,
+			title TEXT NOT NULL,
+			description TEXT NOT NULL,
+			order_index INTEGER DEFAULT 0,
+			status TEXT DEFAULT 'todo',
+			created_at ` + timestampType + `,
+			updated_at ` + timestampType + `,
+			FOREIGN KEY (topic_id) REFERENCES learning_topics(id) ON DELETE CASCADE
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_patterns_category_id ON patterns(category_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_problems_pattern_id ON problems(pattern_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_solutions_problem_id ON solutions(problem_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_learning_resources_topic_id ON learning_resources(topic_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_roadmap_items_topic_id ON roadmap_items(topic_id)`,
 	}
 
 	for _, query := range queries {
@@ -233,7 +309,7 @@ func (d *Database) migrate(isPostgres bool) error {
 			return err
 		}
 		defer rows.Close()
-		
+
 		columnExists = false
 		for rows.Next() {
 			var cid int
@@ -241,11 +317,11 @@ func (d *Database) migrate(isPostgres bool) error {
 			var notNull int
 			var defaultValue sql.NullString
 			var pk int
-			
+
 			if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
 				return err
 			}
-			
+
 			if name == "role" {
 				columnExists = true
 				break
@@ -256,7 +332,7 @@ func (d *Database) migrate(isPostgres bool) error {
 	if err != nil {
 		return err
 	}
-	
+
 	if !columnExists {
 		// Column doesn't exist, add it
 		_, err = d.DB.Exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'admin'`)
@@ -316,7 +392,7 @@ func (d *Database) migrate(isPostgres bool) error {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
@@ -363,6 +439,38 @@ func (d *Database) createDemoUser() error {
 	query = d.convertPlaceholders("INSERT INTO users (id, email, name, password, role) VALUES (?, ?, ?, ?, ?)")
 	_, err = d.DB.Exec(query, demoUserID, "demo@algovault.com", "Demo User", string(hashedPassword), "demo")
 	return err
+}
+
+// seedLearningData populates initial learning topics
+func (d *Database) seedLearningData() error {
+	topics := []LearningTopic{
+		{ID: "topic-lld", Name: "Low Level Design", Icon: "Layout", Description: "Object-oriented design, design patterns, and SOLID principles.", Slug: "lld"},
+		{ID: "topic-hld", Name: "High Level Design", Icon: "Server", Description: "System architecture, scalability, and distributed systems.", Slug: "hld"},
+		{ID: "topic-docker", Name: "Docker", Icon: "Box", Description: "Containerization, images, and orchestration basics.", Slug: "docker"},
+		{ID: "topic-k8s", Name: "Kubernetes", Icon: "Cloud", Description: "Container orchestration at scale.", Slug: "k8s"},
+		{ID: "topic-golang", Name: "Golang", Icon: "Code", Description: "Go programming language, concurrency, and best practices.", Slug: "golang"},
+		{ID: "topic-behavioral", Name: "Behavioral", Icon: "Users", Description: "Soft skills and interview preparation.", Slug: "behavioral"},
+		{ID: "topic-linux", Name: "Linux", Icon: "Terminal", Description: "Linux commands, shell scripting, and system administration.", Slug: "linux"},
+	}
+
+	for _, t := range topics {
+		// Check if topic exists
+		var exists bool
+		query := d.convertPlaceholders("SELECT EXISTS(SELECT 1 FROM learning_topics WHERE slug = ?)")
+		err := d.DB.QueryRow(query, t.Slug).Scan(&exists)
+		if err != nil {
+			return err
+		}
+
+		if !exists {
+			insertQuery := d.convertPlaceholders("INSERT INTO learning_topics (id, name, icon, description, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+			_, err = d.DB.Exec(insertQuery, t.ID, t.Name, t.Icon, t.Description, t.Slug, time.Now(), time.Now())
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Close closes the database connection

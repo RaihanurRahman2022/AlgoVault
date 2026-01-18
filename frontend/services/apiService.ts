@@ -2,7 +2,7 @@
 import { Category, Pattern, Problem, User } from '../types';
 
 // Use environment variable for API URL, fallback to localhost for development
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
   ? `${import.meta.env.VITE_API_BASE_URL}/api`
   : 'http://localhost:8080/api';
 
@@ -55,7 +55,7 @@ export const api = {
     });
     return handleResponse(response);
   },
-  
+
   // Categories
   getCategories: async (): Promise<Category[]> => {
     const response = await fetch(`${API_BASE_URL}/categories`, {
@@ -89,7 +89,7 @@ export const api = {
     });
     return handleResponse(response);
   },
-  
+
   // Patterns
   getPatterns: async (categoryId: string): Promise<Pattern[]> => {
     const response = await fetch(`${API_BASE_URL}/categories/${categoryId}/patterns`, {
@@ -132,7 +132,7 @@ export const api = {
     });
     return handleResponse(response);
   },
-  
+
   // Problems
   getProblems: async (patternId: string): Promise<Problem[]> => {
     const response = await fetch(`${API_BASE_URL}/patterns/${patternId}/problems`, {
@@ -210,5 +210,35 @@ export const api = {
       body: JSON.stringify({ name, categoryName, contentType, prompt: prompt || '' }),
     });
     return handleResponse(response);
+  },
+
+  // Learning Resources
+  getLearningTopics: async (): Promise<any[]> => {
+    const response = await fetch(`${API_BASE_URL}/learning/topics`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  getLearningTopicBySlug: async (slug: string): Promise<any> => {
+    const response = await fetch(`${API_BASE_URL}/learning/topics/${slug}`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  getLearningResources: async (topicId: string): Promise<any[]> => {
+    const response = await fetch(`${API_BASE_URL}/learning/topics/${topicId}/resources`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  getRoadmap: async (topicId: string): Promise<any[]> => {
+    const response = await fetch(`${API_BASE_URL}/learning/topics/${topicId}/roadmap`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
   }
 };
+

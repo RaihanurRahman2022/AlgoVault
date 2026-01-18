@@ -1077,3 +1077,95 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// Learning Resource Handlers
+
+func (h *Handlers) GetLearningTopics(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.DB.DB.Query("SELECT id, name, icon, description, slug, created_at, updated_at FROM learning_topics ORDER BY name ASC")
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var topics []LearningTopic
+	for rows.Next() {
+		var t LearningTopic
+		if err := rows.Scan(&t.ID, &t.Name, &t.Icon, &t.Description, &t.Slug, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Error scanning topic")
+			return
+		}
+		topics = append(topics, t)
+	}
+
+	respondWithJSON(w, http.StatusOK, topics)
+}
+
+func (h *Handlers) GetLearningTopicBySlug(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	slug := vars["slug"]
+
+	var t LearningTopic
+	query := h.DB.convertPlaceholders("SELECT id, name, icon, description, slug, created_at, updated_at FROM learning_topics WHERE slug = ?")
+	err := h.DB.DB.QueryRow(query, slug).Scan(&t.ID, &t.Name, &t.Icon, &t.Description, &t.Slug, &t.CreatedAt, &t.UpdatedAt)
+	if err == sql.ErrNoRows {
+		respondWithError(w, http.StatusNotFound, "Topic not found")
+		return
+	}
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, t)
+}
+
+func (h *Handlers) GetLearningResources(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	topicID := vars["topicId"]
+
+	query := h.DB.convertPlaceholders("SELECT id, topic_id, title, content, type, url, order_index, created_at, updated_at FROM learning_resources WHERE topic_id = ? ORDER BY order_index ASC")
+	rows, err := h.DB.DB.Query(query, topicID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var resources []LearningResource
+	for rows.Next() {
+		var res LearningResource
+		if err := rows.Scan(&res.ID, &res.TopicID, &res.Title, &res.Content, &res.Type, &res.URL, &res.OrderIndex, &res.CreatedAt, &res.UpdatedAt); err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Error scanning resource")
+			return
+		}
+		resources = append(resources, res)
+	}
+
+	respondWithJSON(w, http.StatusOK, resources)
+}
+
+func (h *Handlers) GetRoadmap(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	topicID := vars["topicId"]
+
+	query := h.DB.convertPlaceholders("SELECT id, topic_id, title, description, order_index, status, created_at, updated_at FROM roadmap_items WHERE topic_id = ? ORDER BY order_index ASC")
+	rows, err := h.DB.DB.Query(query, topicID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Database error: "+err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var items []RoadmapItem
+	for rows.Next() {
+		var item RoadmapItem
+		if err := rows.Scan(&item.ID, &item.TopicID, &item.Title, &item.Description, &item.OrderIndex, &item.Status, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Error scanning roadmap item")
+			return
+		}
+		items = append(items, item)
+	}
+
+	respondWithJSON(w, http.StatusOK, items)
+}

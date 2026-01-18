@@ -30,7 +30,7 @@ func main() {
 	log.Printf("Starting server...")
 	log.Printf("PORT environment variable: %s", os.Getenv("PORT"))
 	log.Printf("Using port: %s", *port)
-	
+
 	// Check which database will be used
 	if os.Getenv("DATABASE_URL") != "" {
 		log.Printf("✅ Using PostgreSQL (DATABASE_URL is set)")
@@ -95,6 +95,12 @@ func main() {
 	api.HandleFunc("/ai/generate-problem", handlers.GenerateProblem).Methods("POST", "OPTIONS")
 	api.HandleFunc("/ai/generate-category-description", handlers.GenerateCategoryDescription).Methods("POST", "OPTIONS")
 	api.HandleFunc("/ai/generate-pattern-content", handlers.GeneratePatternContent).Methods("POST", "OPTIONS")
+
+	// Learning routes
+	api.HandleFunc("/learning/topics", handlers.GetLearningTopics).Methods("GET", "OPTIONS")
+	api.HandleFunc("/learning/topics/{slug}", handlers.GetLearningTopicBySlug).Methods("GET", "OPTIONS")
+	api.HandleFunc("/learning/topics/{topicId}/resources", handlers.GetLearningResources).Methods("GET", "OPTIONS")
+	api.HandleFunc("/learning/topics/{topicId}/roadmap", handlers.GetRoadmap).Methods("GET", "OPTIONS")
 
 	// Health check - returns OK immediately so Render can detect the port
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

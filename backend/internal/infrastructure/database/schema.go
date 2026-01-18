@@ -67,9 +67,43 @@ func (d *Database) InitSchema() error {
 			FOREIGN KEY (problem_id) REFERENCES problems(id) ON DELETE CASCADE,
 			UNIQUE(problem_id, language)
 		)`,
+		`CREATE TABLE IF NOT EXISTS learning_topics (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			icon TEXT NOT NULL,
+			description TEXT NOT NULL,
+			slug TEXT UNIQUE NOT NULL,
+			created_at ` + timestampType + `,
+			updated_at ` + timestampType + `
+		)`,
+		`CREATE TABLE IF NOT EXISTS learning_resources (
+			id TEXT PRIMARY KEY,
+			topic_id TEXT NOT NULL,
+			title TEXT NOT NULL,
+			content TEXT NOT NULL,
+			type TEXT NOT NULL,
+			url TEXT,
+			order_index INTEGER DEFAULT 0,
+			created_at ` + timestampType + `,
+			updated_at ` + timestampType + `,
+			FOREIGN KEY (topic_id) REFERENCES learning_topics(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS roadmap_items (
+			id TEXT PRIMARY KEY,
+			topic_id TEXT NOT NULL,
+			title TEXT NOT NULL,
+			description TEXT NOT NULL,
+			order_index INTEGER DEFAULT 0,
+			status TEXT DEFAULT 'todo',
+			created_at ` + timestampType + `,
+			updated_at ` + timestampType + `,
+			FOREIGN KEY (topic_id) REFERENCES learning_topics(id) ON DELETE CASCADE
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_patterns_category_id ON patterns(category_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_problems_pattern_id ON problems(pattern_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_solutions_problem_id ON solutions(problem_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_learning_resources_topic_id ON learning_resources(topic_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_roadmap_items_topic_id ON roadmap_items(topic_id)`,
 	}
 
 	for _, query := range queries {

@@ -1,17 +1,18 @@
 
 import React, { useState, useEffect } from 'react';
 import { api } from './services/apiService';
-import { Category, Pattern, Problem, User, ViewState } from './types';
+import { Category, Pattern, Problem, User, ViewState, LearningTopic } from './types';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import CategoryDetail from './pages/CategoryDetail';
 import PatternDetail from './pages/PatternDetail';
 import ProblemDetail from './pages/ProblemDetail';
-import { ChevronLeft, LogOut, Code2 } from 'lucide-react';
+import LearningTopicDetail from './pages/LearningTopicDetail';
+import Sidebar from './components/Sidebar';
+import { ChevronLeft, LogOut, Code2, Bell, Search, User as UserIcon } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(() => {
-    // Load user from localStorage on initial load
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       try {
@@ -24,23 +25,24 @@ const App: React.FC = () => {
   });
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [viewState, setViewState] = useState<ViewState>(ViewState.CATEGORIES);
-  
+
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [selectedPattern, setSelectedPattern] = useState<Pattern | null>(null);
   const [selectedProblem, setSelectedProblem] = useState<Problem | null>(null);
+  const [selectedLearningTopic, setSelectedLearningTopic] = useState<LearningTopic | null>(null);
 
   const handleLogin = (u: User, t: string) => {
     setUser(u);
     setToken(t);
     localStorage.setItem('token', t);
-    localStorage.setItem('user', JSON.stringify(u)); // Store user with role
+    localStorage.setItem('user', JSON.stringify(u));
   };
 
   const handleLogout = () => {
     setUser(null);
     setToken(null);
     localStorage.removeItem('token');
-    localStorage.removeItem('user'); // Remove user from localStorage
+    localStorage.removeItem('user');
   };
 
   const navigateBack = () => {
@@ -53,7 +55,27 @@ const App: React.FC = () => {
     } else if (viewState === ViewState.PATTERNS) {
       setViewState(ViewState.CATEGORIES);
       setSelectedCategory(null);
+    } else if (viewState === ViewState.LEARNING_TOPIC) {
+      setViewState(ViewState.CATEGORIES);
+      setSelectedLearningTopic(null);
     }
+  };
+
+  const handleSelectPractice = () => {
+    setViewState(ViewState.CATEGORIES);
+    setSelectedLearningTopic(null);
+    setSelectedCategory(null);
+    setSelectedPattern(null);
+    setSelectedProblem(null);
+  };
+
+  const handleSelectTopic = (topic: LearningTopic) => {
+    setSelectedLearningTopic(topic);
+    setViewState(ViewState.LEARNING_TOPIC);
+    // Reset practice states
+    setSelectedCategory(null);
+    setSelectedPattern(null);
+    setSelectedProblem(null);
   };
 
   if (!user) {
@@ -61,101 +83,123 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-900 text-slate-100">
-      {/* Navbar */}
-      <header className="sticky top-0 z-50 bg-slate-800/80 backdrop-blur-md border-b border-slate-700 px-6 py-4">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <div className="flex items-center gap-3">
+    <div className="flex h-screen bg-slate-900 text-slate-100 overflow-hidden">
+      {/* Sidebar */}
+      <Sidebar
+        currentView={viewState}
+        onSelectPractice={handleSelectPractice}
+        onSelectTopic={handleSelectTopic}
+        selectedTopicId={selectedLearningTopic?.id}
+      />
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Header */}
+        <header className="h-16 bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 flex items-center justify-between px-8 shrink-0">
+          <div className="flex items-center gap-4">
             {viewState !== ViewState.CATEGORIES && (
-              <button 
+              <button
                 onClick={navigateBack}
-                className="p-1 hover:bg-slate-700 rounded-lg transition-colors"
+                className="p-2 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-white"
               >
-                <ChevronLeft size={24} />
+                <ChevronLeft size={20} />
               </button>
             )}
-            <div className="flex items-center gap-2 text-indigo-400 font-bold text-xl">
-              <Code2 size={28} />
-              <span>AlgoVault</span>
+            <h2 className="text-sm font-medium text-slate-400">
+              {viewState === ViewState.CATEGORIES && "Dashboard"}
+              {viewState === ViewState.PATTERNS && `Practice / ${selectedCategory?.name}`}
+              {viewState === ViewState.PROBLEMS && `Practice / ${selectedCategory?.name} / ${selectedPattern?.name}`}
+              {viewState === ViewState.PROBLEM_DETAIL && `Practice / ${selectedProblem?.title}`}
+              {viewState === ViewState.LEARNING_TOPIC && `Learning / ${selectedLearningTopic?.name}`}
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-900/50 border border-slate-700/50 rounded-lg text-slate-500">
+              <Search size={16} />
+              <span className="text-xs">Search...</span>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <button className="text-slate-400 hover:text-white transition-colors">
+                <Bell size={20} />
+              </button>
+              <div className="h-8 w-px bg-slate-700/50"></div>
+              <div className="flex items-center gap-3">
+                <div className="text-right hidden sm:block">
+                  <p className="text-xs font-medium text-slate-200">{user.name}</p>
+                  <p className="text-[10px] text-slate-500 capitalize">{user.role || 'User'}</p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="p-2 bg-slate-700/50 hover:bg-red-500/10 hover:text-red-400 rounded-lg transition-all"
+                  title="Logout"
+                >
+                  <LogOut size={18} />
+                </button>
+              </div>
             </div>
           </div>
-          
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-slate-400">Welcome, {user.name}</span>
-            <button 
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-red-600/20 hover:text-red-400 rounded-lg text-sm font-medium transition-all"
-            >
-              <LogOut size={16} />
-              Logout
-            </button>
+        </header>
+
+        {/* Scrollable Content Area */}
+        <main className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+          <div className="max-w-6xl mx-auto">
+            {viewState === ViewState.CATEGORIES && (
+              <Dashboard
+                onSelectCategory={(cat) => {
+                  setSelectedCategory(cat);
+                  setViewState(ViewState.PATTERNS);
+                }}
+                isDemoUser={user?.role === 'demo'}
+              />
+            )}
+
+            {viewState === ViewState.PATTERNS && selectedCategory && (
+              <CategoryDetail
+                category={selectedCategory}
+                onSelectPattern={(pat) => {
+                  setSelectedPattern(pat);
+                  setViewState(ViewState.PROBLEMS);
+                }}
+                isDemoUser={user?.role === 'demo'}
+              />
+            )}
+
+            {viewState === ViewState.PROBLEMS && selectedPattern && selectedCategory && (
+              <PatternDetail
+                pattern={selectedPattern}
+                categoryName={selectedCategory.name}
+                onSelectProblem={(prob) => {
+                  setSelectedProblem(prob);
+                  setViewState(ViewState.PROBLEM_DETAIL);
+                }}
+                onPatternUpdated={() => { }}
+                isDemoUser={user?.role === 'demo'}
+              />
+            )}
+
+            {viewState === ViewState.PROBLEM_DETAIL && selectedProblem && (
+              <ProblemDetail
+                problem={selectedProblem}
+                onUpdate={(updated) => setSelectedProblem(updated)}
+                onDelete={() => {
+                  setViewState(ViewState.PROBLEMS);
+                  setSelectedProblem(null);
+                }}
+                isDemoUser={user?.role === 'demo'}
+              />
+            )}
+
+            {viewState === ViewState.LEARNING_TOPIC && selectedLearningTopic && (
+              <LearningTopicDetail topic={selectedLearningTopic} />
+            )}
           </div>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main className="flex-1 w-full max-w-7xl mx-auto p-6 md:p-8">
-        {viewState === ViewState.CATEGORIES && (
-          <Dashboard 
-            onSelectCategory={(cat) => {
-              setSelectedCategory(cat);
-              setViewState(ViewState.PATTERNS);
-            }}
-            isDemoUser={user?.role === 'demo'}
-          />
-        )}
-
-        {viewState === ViewState.PATTERNS && selectedCategory && (
-          <CategoryDetail 
-            category={selectedCategory}
-            onSelectPattern={(pat) => {
-              setSelectedPattern(pat);
-              setViewState(ViewState.PROBLEMS);
-            }}
-            isDemoUser={user?.role === 'demo'}
-          />
-        )}
-
-        {viewState === ViewState.PROBLEMS && selectedPattern && selectedCategory && (
-          <PatternDetail 
-            pattern={selectedPattern}
-            categoryName={selectedCategory.name}
-            onSelectProblem={(prob) => {
-              setSelectedProblem(prob);
-              setViewState(ViewState.PROBLEM_DETAIL);
-            }}
-            onPatternUpdated={() => {
-              // Refresh will happen automatically when navigating back
-            }}
-            isDemoUser={user?.role === 'demo'}
-          />
-        )}
-
-        {viewState === ViewState.PROBLEM_DETAIL && selectedProblem && (
-          <ProblemDetail 
-            problem={selectedProblem}
-            onUpdate={(updated) => {
-              setSelectedProblem(updated);
-              // If we have a pattern selected, we could refresh the problems list
-              // but since we're in detail view, just update the current problem
-            }}
-            onDelete={() => {
-              // Navigate back to problems list after deletion
-              setViewState(ViewState.PROBLEMS);
-              setSelectedProblem(null);
-            }}
-            isDemoUser={user?.role === 'demo'}
-          />
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-slate-950 border-t border-slate-800 py-6 text-center text-slate-500 text-sm">
-        <p>&copy; {new Date().getFullYear()} AlgoVault. All Practice Problems in One Place.</p>
-        <p className="mt-1">Powered by Gemini AI and Golang Backend</p>
-      </footer>
+        </main>
+      </div>
     </div>
   );
 };
 
 export default App;
+

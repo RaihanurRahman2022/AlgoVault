@@ -46,9 +46,39 @@ export interface User {
   role?: string; // 'admin' or 'demo'
 }
 
+export interface LearningTopic {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  slug: string;
+}
+
+export interface LearningResource {
+  id: string;
+  topicId: string;
+  title: string;
+  content: string;
+  type: 'article' | 'video' | 'link';
+  url?: string;
+  orderIndex: number;
+}
+
+export interface RoadmapItem {
+  id: string;
+  topicId: string;
+  title: string;
+  description: string;
+  orderIndex: number;
+  status: 'todo' | 'in-progress' | 'completed';
+}
+
 export enum ViewState {
   CATEGORIES,
   PATTERNS,
   PROBLEMS,
-  PROBLEM_DETAIL
+  PROBLEM_DETAIL,
+  LEARNING_TOPIC,
+  LEARNING_RESOURCE
 }
+
