@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Problem, Solution } from '../types';
-import { X, Sparkles, Loader2 } from 'lucide-react';
+import { X, Sparkles, Loader2, Globe } from 'lucide-react';
 import { LANGUAGES } from '../constants';
 import { api } from '../services/apiService';
 
@@ -27,6 +27,9 @@ const ProblemForm: React.FC<ProblemFormProps> = ({ problem, patternId, onSave, o
   const [aiQuery, setAiQuery] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAIModal, setShowAIModal] = useState(false);
+  const [externalId, setExternalId] = useState('');
+  const [isFetchingExternal, setIsFetchingExternal] = useState(false);
+  const [showExternalModal, setShowExternalModal] = useState(false);
 
   const updateSolution = (language: string, code: string) => {
     setSolutions(prev => {
@@ -37,6 +40,37 @@ const ProblemForm: React.FC<ProblemFormProps> = ({ problem, patternId, onSave, o
       return [...prev, { id: '', language: language as any, code, problemId: patternId }];
     });
   };
+
+  const handleExternalFetch = async () => {
+    if (!externalId.trim()) {
+      alert('Please enter a problem ID');
+      return;
+    }
+
+    setIsFetchingExternal(true);
+    try {
+      const fetched = await api.fetchExternalProblem(externalId);
+      setTitle(fetched.title);
+      setDifficulty(fetched.difficulty);
+      setDescription(fetched.description);
+      setInput(fetched.input);
+      setOutput(fetched.output);
+      setConstraints(fetched.constraints);
+      setSampleInput(fetched.sampleInput);
+      setSampleOutput(fetched.sampleOutput);
+      setExplanation(fetched.explanation);
+      setNotes(fetched.notes);
+      setShowExternalModal(false);
+
+      setExternalId('');
+    } catch (error: any) {
+      console.error('Error fetching external problem:', error);
+      alert('Failed to fetch problem: ' + (error.message || 'Unknown error'));
+    } finally {
+      setIsFetchingExternal(false);
+    }
+  };
+
 
   const handleAIGenerate = async () => {
     if (!aiQuery.trim()) {
@@ -101,6 +135,16 @@ const ProblemForm: React.FC<ProblemFormProps> = ({ problem, patternId, onSave, o
           </h2>
           <div className="flex items-center gap-3">
             <button
+              type="button"
+              onClick={() => setShowExternalModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors"
+              title="Fetch problem from external API"
+            >
+              <Globe size={18} />
+              Fetch External
+            </button>
+            <button
+              type="button"
               onClick={() => setShowAIModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors"
               title="Generate problem with AI"
@@ -108,6 +152,7 @@ const ProblemForm: React.FC<ProblemFormProps> = ({ problem, patternId, onSave, o
               <Sparkles size={18} />
               AI Generate
             </button>
+
             <button
               onClick={onClose}
               className="text-slate-400 hover:text-white transition-colors"
@@ -351,7 +396,78 @@ const ProblemForm: React.FC<ProblemFormProps> = ({ problem, patternId, onSave, o
           </div>
         </div>
       )}
+
+      {/* External Fetch Modal */}
+      {showExternalModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center p-6 border-b border-slate-700">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Globe size={20} className="text-emerald-400" />
+                Fetch External Problem
+              </h3>
+              <button
+                onClick={() => {
+                  setShowExternalModal(false);
+                  setExternalId('');
+                }}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Enter Problem ID (e.g., dsa_ContainerWithMostWater)
+                </label>
+                <input
+                  type="text"
+                  value={externalId}
+                  onChange={(e) => setExternalId(e.target.value)}
+                  placeholder="dsa_ProblemName"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleExternalFetch();
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowExternalModal(false);
+                    setExternalId('');
+                  }}
+                  className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleExternalFetch}
+                  disabled={isFetchingExternal || !externalId.trim()}
+                  className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isFetchingExternal ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <Globe size={18} />
+                      Fetch
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+
   );
 };
 

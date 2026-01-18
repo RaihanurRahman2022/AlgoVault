@@ -36,6 +36,23 @@ type RegisterRequest struct {
 	Name     string `json:"name"`
 }
 
+type ThitaProblemResponse struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Difficulty  string `json:"difficulty"`
+	CodeStubs   []struct {
+		Language string `json:"language"`
+		CodeStub string `json:"code_stub"`
+	} `json:"code_stubs"`
+	Hints     []string `json:"hints"`
+	TestCases []struct {
+		InputData      string `json:"input_data"`
+		ExpectedOutput string `json:"expected_output"`
+		Explanation    string `json:"explanation"`
+	} `json:"test_cases"`
+}
+
 // Login handles user authentication
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
@@ -730,6 +747,7 @@ type GenerateProblemResponse struct {
 	SampleInput  string `json:"sampleInput"`
 	SampleOutput string `json:"sampleOutput"`
 	Explanation  string `json:"explanation"`
+	Notes        string `json:"notes"`
 }
 
 // GenerateProblem uses AI to generate problem details
@@ -861,6 +879,83 @@ Return ONLY valid JSON with these exact keys. Use markdown formatting for multi-
 	}
 
 	respondWithJSON(w, http.StatusOK, generatedProblem)
+}
+
+// FetchExternalProblem fetches problem details from Thita.ai API
+func (h *Handlers) FetchExternalProblem(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	problemID := vars["problemId"]
+
+	if problemID == "" {
+		respondWithError(w, http.StatusBadRequest, "Problem ID is required")
+		return
+	}
+
+	// Clean the problem ID (remove leading slash if present)
+	problemID = strings.TrimPrefix(problemID, "/")
+
+	url := fmt.Sprintf("https://api.thita.ai/api/technical-coaching/problems/%s", problemID)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "AlgoVault/1.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to connect to external API: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respondWithError(w, resp.StatusCode, fmt.Sprintf("External API returned error status: %d", resp.StatusCode))
+		return
+	}
+
+	var thitaResp ThitaProblemResponse
+	if err := json.NewDecoder(resp.Body).Decode(&thitaResp); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to parse external API response")
+		return
+	}
+
+	// Map Thita response to our format
+	result := GenerateProblemResponse{
+		Title:      thitaResp.Title,
+		Difficulty: thitaResp.Difficulty,
+	}
+
+	// Parse description to extract sections
+	desc := thitaResp.Description
+
+	// Default values
+	result.Description = desc
+	result.Constraints = "See description"
+	result.Input = "See description"
+	result.Output = "See description"
+
+	// Try to extract constraints
+	if idx := strings.Index(desc, "**Constraints:**"); idx != -1 {
+		result.Description = strings.TrimSpace(desc[:idx])
+		result.Constraints = strings.TrimSpace(desc[idx+len("**Constraints:**"):])
+	}
+
+	// Try to extract sample input/output from test cases
+	if len(thitaResp.TestCases) > 0 {
+		result.SampleInput = thitaResp.TestCases[0].InputData
+		result.SampleOutput = thitaResp.TestCases[0].ExpectedOutput
+		result.Explanation = thitaResp.TestCases[0].Explanation
+	}
+
+	// Map hints to notes
+	if len(thitaResp.Hints) > 0 {
+		result.Notes = "### Hints\n"
+		for _, hint := range thitaResp.Hints {
+			result.Notes += fmt.Sprintf("- %s\n", hint)
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, result)
 }
 
 // GenerateCategoryDescription uses AI to generate category description

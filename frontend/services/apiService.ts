@@ -185,6 +185,7 @@ export const api = {
     sampleInput: string;
     sampleOutput: string;
     explanation: string;
+    notes: string;
   }> => {
     const response = await fetch(`${API_BASE_URL}/ai/generate-problem`, {
       method: 'POST',
@@ -208,6 +209,24 @@ export const api = {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ name, categoryName, contentType, prompt: prompt || '' }),
+    });
+    return handleResponse(response);
+  },
+
+  fetchExternalProblem: async (problemId: string): Promise<{
+    title: string;
+    difficulty: 'Easy' | 'Medium' | 'Hard';
+    description: string;
+    input: string;
+    output: string;
+    constraints: string;
+    sampleInput: string;
+    sampleOutput: string;
+    explanation: string;
+    notes: string;
+  }> => {
+    const response = await fetch(`${API_BASE_URL}/external/fetch-problem/${problemId}`, {
+      headers: getAuthHeaders(),
     });
     return handleResponse(response);
   },

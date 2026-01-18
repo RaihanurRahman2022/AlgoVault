@@ -96,6 +96,9 @@ func main() {
 	api.HandleFunc("/ai/generate-category-description", handlers.GenerateCategoryDescription).Methods("POST", "OPTIONS")
 	api.HandleFunc("/ai/generate-pattern-content", handlers.GeneratePatternContent).Methods("POST", "OPTIONS")
 
+	// External API routes
+	api.HandleFunc("/external/fetch-problem/{problemId}", handlers.FetchExternalProblem).Methods("GET", "OPTIONS")
+
 	// Learning routes
 	api.HandleFunc("/learning/topics", handlers.GetLearningTopics).Methods("GET", "OPTIONS")
 	api.HandleFunc("/learning/topics/{slug}", handlers.GetLearningTopicBySlug).Methods("GET", "OPTIONS")
