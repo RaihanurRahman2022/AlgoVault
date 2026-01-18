@@ -167,7 +167,8 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Check if user already exists
 	var existingID string
-	err := h.DB.DB.QueryRow("SELECT id FROM users WHERE email = ? OR LOWER(email) = LOWER(?)", req.Email, req.Email).Scan(&existingID)
+	query := h.DB.convertPlaceholders("SELECT id FROM users WHERE email = ? OR LOWER(email) = LOWER(?)")
+	err := h.DB.DB.QueryRow(query, req.Email, req.Email).Scan(&existingID)
 	if err == nil {
 		respondWithError(w, http.StatusConflict, "User with this email already exists")
 		return
@@ -188,8 +189,9 @@ func (h *Handlers) Register(w http.ResponseWriter, r *http.Request) {
 	userID := generateID()
 
 	// Insert user (default role is 'admin' as per schema)
+	query = h.DB.convertPlaceholders("INSERT INTO users (id, email, name, password, role) VALUES (?, ?, ?, ?, ?)")
 	_, err = h.DB.DB.Exec(
-		"INSERT INTO users (id, email, name, password, role) VALUES (?, ?, ?, ?, ?)",
+		query,
 		userID, req.Email, req.Name, string(hashedPassword), "admin",
 	)
 	if err != nil {
@@ -886,7 +888,7 @@ func (h *Handlers) GenerateCategoryDescription(w http.ResponseWriter, r *http.Re
 		respondWithError(w, http.StatusForbidden, "Demo users cannot generate content")
 		return
 	}
-	
+
 	var req struct {
 		Name   string `json:"name"`
 		Prompt string `json:"prompt"` // Optional user prompt
@@ -934,7 +936,7 @@ func (h *Handlers) GeneratePatternContent(w http.ResponseWriter, r *http.Request
 		respondWithError(w, http.StatusForbidden, "Demo users cannot generate content")
 		return
 	}
-	
+
 	var req struct {
 		Name         string `json:"name"`
 		CategoryName string `json:"categoryName"`
@@ -1079,8 +1081,8 @@ func (h *Handlers) callAI(prompt string) (string, error) {
 	if strings.HasPrefix(contentTrimmed, "```") && strings.HasSuffix(contentTrimmed, "```") {
 		// Check if it's a wrapper (starts with ```json or ```markdown or just ```)
 		firstLine := strings.Split(contentTrimmed, "\n")[0]
-		if strings.Contains(firstLine, "json") || strings.Contains(firstLine, "markdown") || 
-		   (strings.Count(contentTrimmed, "```") == 2 && strings.Index(contentTrimmed, "```") == 0) {
+		if strings.Contains(firstLine, "json") || strings.Contains(firstLine, "markdown") ||
+			(strings.Count(contentTrimmed, "```") == 2 && strings.Index(contentTrimmed, "```") == 0) {
 			// Remove the wrapper
 			lines := strings.Split(contentTrimmed, "\n")
 			if len(lines) > 2 {
