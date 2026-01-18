@@ -61,17 +61,13 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	// Strategy 1: Exact match (case-sensitive, trimmed)
-	err = h.DB.DB.QueryRow(
-		"SELECT id, email, name, password, COALESCE(role, 'admin') as role FROM users WHERE email = ?",
-		trimmedEmail,
-	).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &role)
+	query1 := h.DB.convertPlaceholders("SELECT id, email, name, password, COALESCE(role, 'admin') as role FROM users WHERE email = ?")
+	err = h.DB.DB.QueryRow(query1, trimmedEmail).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &role)
 
 	// Strategy 2: Case-insensitive match
 	if err == sql.ErrNoRows {
-		err = h.DB.DB.QueryRow(
-			"SELECT id, email, name, password, COALESCE(role, 'admin') as role FROM users WHERE LOWER(email) = ?",
-			normalizedEmail,
-		).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &role)
+		query2 := h.DB.convertPlaceholders("SELECT id, email, name, password, COALESCE(role, 'admin') as role FROM users WHERE LOWER(email) = ?")
+		err = h.DB.DB.QueryRow(query2, normalizedEmail).Scan(&user.ID, &user.Email, &user.Name, &user.Password, &role)
 	}
 
 	// Strategy 3: Query all users and find match manually (fallback for edge cases)
@@ -112,7 +108,8 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	} else {
 		user.Role = "admin"
 		// Update the user in database to have a role if it was NULL
-		h.DB.DB.Exec("UPDATE users SET role = 'admin' WHERE id = ? AND (role IS NULL OR role = '')", user.ID)
+		updateQuery := h.DB.convertPlaceholders("UPDATE users SET role = 'admin' WHERE id = ? AND (role IS NULL OR role = '')")
+		h.DB.DB.Exec(updateQuery, user.ID)
 	}
 
 	// Compare password - check if password hash is valid first
@@ -269,10 +266,8 @@ func (h *Handlers) CreateCategory(w http.ResponseWriter, r *http.Request) {
 	cat.CreatedAt = time.Now()
 	cat.UpdatedAt = time.Now()
 
-	_, err := h.DB.DB.Exec(
-		"INSERT INTO categories (id, name, icon, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-		cat.ID, cat.Name, cat.Icon, cat.Description, cat.CreatedAt, cat.UpdatedAt,
-	)
+	query := h.DB.convertPlaceholders("INSERT INTO categories (id, name, icon, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+	_, err := h.DB.DB.Exec(query, cat.ID, cat.Name, cat.Icon, cat.Description, cat.CreatedAt, cat.UpdatedAt)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error creating category")
 		return
@@ -296,10 +291,8 @@ func (h *Handlers) UpdateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cat.UpdatedAt = time.Now()
-	_, err := h.DB.DB.Exec(
-		"UPDATE categories SET name = ?, icon = ?, description = ?, updated_at = ? WHERE id = ?",
-		cat.Name, cat.Icon, cat.Description, cat.UpdatedAt, id,
-	)
+	query := h.DB.convertPlaceholders("UPDATE categories SET name = ?, icon = ?, description = ?, updated_at = ? WHERE id = ?")
+	_, err := h.DB.DB.Exec(query, cat.Name, cat.Icon, cat.Description, cat.UpdatedAt, id)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error updating category")
 		return
@@ -317,7 +310,8 @@ func (h *Handlers) DeleteCategory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	_, err := h.DB.DB.Exec("DELETE FROM categories WHERE id = ?", id)
+	query := h.DB.convertPlaceholders("DELETE FROM categories WHERE id = ?")
+	_, err := h.DB.DB.Exec(query, id)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error deleting category")
 		return
@@ -381,10 +375,8 @@ func (h *Handlers) CreatePattern(w http.ResponseWriter, r *http.Request) {
 	pat.CreatedAt = time.Now()
 	pat.UpdatedAt = time.Now()
 
-	_, err := h.DB.DB.Exec(
-		"INSERT INTO patterns (id, category_id, name, icon, description, theory, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		pat.ID, pat.CategoryID, pat.Name, pat.Icon, pat.Description, pat.Theory, pat.CreatedAt, pat.UpdatedAt,
-	)
+	query := h.DB.convertPlaceholders("INSERT INTO patterns (id, category_id, name, icon, description, theory, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+	_, err := h.DB.DB.Exec(query, pat.ID, pat.CategoryID, pat.Name, pat.Icon, pat.Description, pat.Theory, pat.CreatedAt, pat.UpdatedAt)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error creating pattern")
 		return
@@ -408,10 +400,8 @@ func (h *Handlers) UpdatePattern(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pat.UpdatedAt = time.Now()
-	_, err := h.DB.DB.Exec(
-		"UPDATE patterns SET name = ?, icon = ?, description = ?, theory = ?, updated_at = ? WHERE id = ?",
-		pat.Name, pat.Icon, pat.Description, pat.Theory, pat.UpdatedAt, id,
-	)
+	query := h.DB.convertPlaceholders("UPDATE patterns SET name = ?, icon = ?, description = ?, theory = ?, updated_at = ? WHERE id = ?")
+	_, err := h.DB.DB.Exec(query, pat.Name, pat.Icon, pat.Description, pat.Theory, pat.UpdatedAt, id)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error updating pattern")
 		return
@@ -429,7 +419,8 @@ func (h *Handlers) DeletePattern(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	_, err := h.DB.DB.Exec("DELETE FROM patterns WHERE id = ?", id)
+	query := h.DB.convertPlaceholders("DELETE FROM patterns WHERE id = ?")
+	_, err := h.DB.DB.Exec(query, id)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error deleting pattern")
 		return
@@ -455,10 +446,8 @@ func (h *Handlers) UpdatePatternTheory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.DB.DB.Exec(
-		"UPDATE patterns SET theory = ?, updated_at = ? WHERE id = ?",
-		req.Theory, time.Now(), id,
-	)
+	query := h.DB.convertPlaceholders("UPDATE patterns SET theory = ?, updated_at = ? WHERE id = ?")
+	_, err := h.DB.DB.Exec(query, req.Theory, time.Now(), id)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error updating pattern theory")
 		return
@@ -571,11 +560,8 @@ func (h *Handlers) CreateProblem(w http.ResponseWriter, r *http.Request) {
 	prob.CreatedAt = time.Now()
 	prob.UpdatedAt = time.Now()
 
-	_, err := h.DB.DB.Exec(`
-		INSERT INTO problems (id, pattern_id, title, difficulty, description, input, output,
-		                     constraints, sample_input, sample_output, explanation, notes, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, prob.ID, prob.PatternID, prob.Title, prob.Difficulty,
+	query := h.DB.convertPlaceholders(`INSERT INTO problems (id, pattern_id, title, difficulty, description, input, output, constraints, sample_input, sample_output, explanation, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	_, err := h.DB.DB.Exec(query, prob.ID, prob.PatternID, prob.Title, prob.Difficulty,
 		prob.Description, prob.Input, prob.Output, prob.Constraints,
 		prob.SampleInput, prob.SampleOutput, prob.Explanation, prob.Notes,
 		prob.CreatedAt, prob.UpdatedAt)
@@ -590,10 +576,8 @@ func (h *Handlers) CreateProblem(w http.ResponseWriter, r *http.Request) {
 		sol.ProblemID = prob.ID
 		sol.CreatedAt = time.Now()
 		sol.UpdatedAt = time.Now()
-		_, err := h.DB.DB.Exec(`
-			INSERT INTO solutions (id, problem_id, language, code, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, sol.ID, sol.ProblemID, sol.Language, sol.Code, sol.CreatedAt, sol.UpdatedAt)
+		solQuery := h.DB.convertPlaceholders(`INSERT INTO solutions (id, problem_id, language, code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`)
+		_, err := h.DB.DB.Exec(solQuery, sol.ID, sol.ProblemID, sol.Language, sol.Code, sol.CreatedAt, sol.UpdatedAt)
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Error saving solution")
 			return
@@ -626,12 +610,8 @@ func (h *Handlers) UpdateProblem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	prob.UpdatedAt = time.Now()
-	_, err := h.DB.DB.Exec(`
-		UPDATE problems SET title = ?, difficulty = ?, description = ?, input = ?, output = ?,
-		                    constraints = ?, sample_input = ?, sample_output = ?, explanation = ?,
-		                    notes = ?, updated_at = ?
-		WHERE id = ?
-	`, prob.Title, prob.Difficulty, prob.Description, prob.Input, prob.Output,
+	query := h.DB.convertPlaceholders(`UPDATE problems SET title = ?, difficulty = ?, description = ?, input = ?, output = ?, constraints = ?, sample_input = ?, sample_output = ?, explanation = ?, notes = ?, updated_at = ? WHERE id = ?`)
+	_, err := h.DB.DB.Exec(query, prob.Title, prob.Difficulty, prob.Description, prob.Input, prob.Output,
 		prob.Constraints, prob.SampleInput, prob.SampleOutput, prob.Explanation,
 		prob.Notes, prob.UpdatedAt, id)
 	if err != nil {
@@ -646,24 +626,20 @@ func (h *Handlers) UpdateProblem(w http.ResponseWriter, r *http.Request) {
 
 		// Check if solution exists for this language
 		var existingID string
-		err := h.DB.DB.QueryRow(`
-			SELECT id FROM solutions WHERE problem_id = ? AND language = ?
-		`, id, sol.Language).Scan(&existingID)
+		checkQuery := h.DB.convertPlaceholders(`SELECT id FROM solutions WHERE problem_id = ? AND language = ?`)
+		err := h.DB.DB.QueryRow(checkQuery, id, sol.Language).Scan(&existingID)
 
 		if err == sql.ErrNoRows {
 			// New solution - generate ID
 			sol.ID = generateID()
 			sol.CreatedAt = time.Now()
-			_, err = h.DB.DB.Exec(`
-				INSERT INTO solutions (id, problem_id, language, code, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?)
-			`, sol.ID, sol.ProblemID, sol.Language, sol.Code, sol.CreatedAt, sol.UpdatedAt)
+			insertQuery := h.DB.convertPlaceholders(`INSERT INTO solutions (id, problem_id, language, code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`)
+			_, err = h.DB.DB.Exec(insertQuery, sol.ID, sol.ProblemID, sol.Language, sol.Code, sol.CreatedAt, sol.UpdatedAt)
 		} else if err == nil {
 			// Existing solution - update it
 			sol.ID = existingID
-			_, err = h.DB.DB.Exec(`
-				UPDATE solutions SET code = ?, updated_at = ? WHERE problem_id = ? AND language = ?
-			`, sol.Code, sol.UpdatedAt, sol.ProblemID, sol.Language)
+			updateQuery := h.DB.convertPlaceholders(`UPDATE solutions SET code = ?, updated_at = ? WHERE problem_id = ? AND language = ?`)
+			_, err = h.DB.DB.Exec(updateQuery, sol.Code, sol.UpdatedAt, sol.ProblemID, sol.Language)
 		}
 
 		if err != nil {
@@ -692,7 +668,8 @@ func (h *Handlers) DeleteProblem(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	_, err := h.DB.DB.Exec("DELETE FROM problems WHERE id = ?", id)
+	query := h.DB.convertPlaceholders("DELETE FROM problems WHERE id = ?")
+	_, err := h.DB.DB.Exec(query, id)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error deleting problem")
 		return
