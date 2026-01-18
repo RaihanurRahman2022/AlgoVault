@@ -919,6 +919,20 @@ func (h *Handlers) FetchExternalProblem(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Helper to clean markdown and decode HTML entities
+	cleanMarkdown := func(s string) string {
+		s = strings.ReplaceAll(s, "&nbsp;", " ")
+		s = strings.ReplaceAll(s, "&lt;", "<")
+		s = strings.ReplaceAll(s, "&gt;", ">")
+		s = strings.ReplaceAll(s, "&amp;", "&")
+		s = strings.ReplaceAll(s, "\u0026nbsp;", " ")
+		s = strings.ReplaceAll(s, "\u0026lt;", "<")
+		s = strings.ReplaceAll(s, "\u0026gt;", ">")
+		s = strings.ReplaceAll(s, "\u0026amp;", "&")
+		s = strings.ReplaceAll(s, "  ", " ") // Remove double spaces
+		return strings.TrimSpace(s)
+	}
+
 	// Map Thita response to our format
 	result := GenerateProblemResponse{
 		Title:      thitaResp.Title,
@@ -928,30 +942,81 @@ func (h *Handlers) FetchExternalProblem(w http.ResponseWriter, r *http.Request) 
 	// Parse description to extract sections
 	desc := thitaResp.Description
 
-	// Default values
-	result.Description = desc
-	result.Constraints = "See description"
-	result.Input = "See description"
-	result.Output = "See description"
-
-	// Try to extract constraints
+	// Try to extract constraints first (usually at the end)
+	constraints := ""
 	if idx := strings.Index(desc, "**Constraints:**"); idx != -1 {
-		result.Description = strings.TrimSpace(desc[:idx])
-		result.Constraints = strings.TrimSpace(desc[idx+len("**Constraints:**"):])
+		constraints = cleanMarkdown(desc[idx+len("**Constraints:**"):])
+		desc = desc[:idx]
 	}
+
+	// Try to extract Input/Output format if they exist in description
+
+	inputFormat := "See description"
+	outputFormat := "See description"
+
+	// Check for explicit format sections
+	inputMarkers := []string{"**Input Format**", "**Input format**", "### Input"}
+	outputMarkers := []string{"**Output Format**", "**Output format**", "### Output"}
+
+	for _, m := range inputMarkers {
+		if idx := strings.Index(desc, m); idx != -1 {
+			endIdx := len(desc)
+			for _, nextM := range append(outputMarkers, "**Example", "Example 1", "**Constraints") {
+				if nIdx := strings.Index(desc[idx+len(m):], nextM); nIdx != -1 {
+					if idx+len(m)+nIdx < endIdx {
+						endIdx = idx + len(m) + nIdx
+					}
+				}
+			}
+			inputFormat = cleanMarkdown(desc[idx+len(m) : endIdx])
+			break
+		}
+	}
+
+	for _, m := range outputMarkers {
+		if idx := strings.Index(desc, m); idx != -1 {
+			endIdx := len(desc)
+			for _, nextM := range []string{"**Example", "Example 1", "**Constraints"} {
+				if nIdx := strings.Index(desc[idx+len(m):], nextM); nIdx != -1 {
+					if idx+len(m)+nIdx < endIdx {
+						endIdx = idx + len(m) + nIdx
+					}
+				}
+			}
+			outputFormat = cleanMarkdown(desc[idx+len(m) : endIdx])
+			break
+		}
+	}
+
+	// Split description before examples to keep it clean
+	exampleMarkers := []string{"**Example 1:**", "Example 1:", "**Example:**", "Example:", "**Example 1**", "Example 1"}
+	for _, marker := range exampleMarkers {
+		if idx := strings.Index(desc, marker); idx != -1 {
+			desc = desc[:idx]
+			break
+		}
+	}
+
+	result.Description = cleanMarkdown(desc)
+	result.Constraints = constraints
+	if result.Constraints == "" {
+		result.Constraints = "No specific constraints provided."
+	}
+	result.Input = inputFormat
+	result.Output = outputFormat
 
 	// Try to extract sample input/output from test cases
 	if len(thitaResp.TestCases) > 0 {
-		result.SampleInput = thitaResp.TestCases[0].InputData
-		result.SampleOutput = thitaResp.TestCases[0].ExpectedOutput
-		result.Explanation = thitaResp.TestCases[0].Explanation
+		result.SampleInput = cleanMarkdown(thitaResp.TestCases[0].InputData)
+		result.SampleOutput = cleanMarkdown(thitaResp.TestCases[0].ExpectedOutput)
+		result.Explanation = cleanMarkdown(thitaResp.TestCases[0].Explanation)
 	}
 
 	// Map hints to notes
 	if len(thitaResp.Hints) > 0 {
 		result.Notes = "### Hints\n"
 		for _, hint := range thitaResp.Hints {
-			result.Notes += fmt.Sprintf("- %s\n", hint)
+			result.Notes += fmt.Sprintf("- %s\n", cleanMarkdown(hint))
 		}
 	}
 
