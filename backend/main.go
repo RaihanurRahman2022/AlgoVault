@@ -19,7 +19,8 @@ func main() {
 		portEnv = "8080"
 	}
 
-	dbPath := flag.String("db", "./algovault.db", "Path to SQLite database file")
+	// dbPath is optional - only used for SQLite when DATABASE_URL is not set
+	dbPath := flag.String("db", "./algovault.db", "Path to SQLite database file (used only if DATABASE_URL is not set)")
 	port := flag.String("port", portEnv, "Server port")
 	jwtSecret := flag.String("jwt-secret", getEnv("JWT_SECRET", "your-secret-key-change-in-production"), "JWT secret key")
 	aiAPIKey := flag.String("ai-api-key", getEnv("AI_API_KEY", "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"), "OpenRouter API key")
@@ -29,11 +30,15 @@ func main() {
 	log.Printf("Starting server...")
 	log.Printf("PORT environment variable: %s", os.Getenv("PORT"))
 	log.Printf("Using port: %s", *port)
-	log.Printf("Database path: %s", *dbPath)
+	
+	// Check which database will be used
 	if os.Getenv("DATABASE_URL") != "" {
-		log.Printf("Using PostgreSQL (DATABASE_URL is set)")
+		log.Printf("✅ Using PostgreSQL (DATABASE_URL is set)")
+		log.Printf("Database: PostgreSQL via DATABASE_URL")
 	} else {
-		log.Printf("Using SQLite")
+		log.Printf("⚠️  Using SQLite (DATABASE_URL not set)")
+		log.Printf("Database path: %s", *dbPath)
+		log.Printf("Note: SQLite data will be lost on Render restarts. Use DATABASE_URL for persistence.")
 	}
 
 	// Initialize database FIRST
@@ -43,7 +48,7 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
-	log.Printf("Database ready")
+	log.Printf("✅ Database ready and connected")
 
 	// Initialize handlers
 	handlers := &Handlers{
