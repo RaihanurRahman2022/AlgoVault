@@ -258,6 +258,29 @@ export const api = {
       headers: getAuthHeaders(),
     });
     return handleResponse(response);
-  }
-};
+  },
 
+  // Bulk External Operations
+  fetchAllExternalData: async (): Promise<{
+    message: string;
+    stats: {
+      categoriesCreated: number;
+      patternsCreated: number;
+      problemsCreated: number;
+    };
+  }> => {
+    const response = await fetch(`${API_BASE_URL}/external/fetch-all`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  clearAllData: async (): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE_URL}/external/clear-all`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+};

@@ -98,6 +98,8 @@ func main() {
 
 	// External API routes
 	api.HandleFunc("/external/fetch-problem/{problemId}", handlers.FetchExternalProblem).Methods("GET", "OPTIONS")
+	api.HandleFunc("/external/fetch-all", handlers.FetchAllExternalData).Methods("POST", "OPTIONS")
+	api.HandleFunc("/external/clear-all", handlers.ClearAllData).Methods("POST", "OPTIONS")
 
 	// Learning routes
 	api.HandleFunc("/learning/topics", handlers.GetLearningTopics).Methods("GET", "OPTIONS")

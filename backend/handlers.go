@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -51,6 +52,24 @@ type ThitaProblemResponse struct {
 		ExpectedOutput string `json:"expected_output"`
 		Explanation    string `json:"explanation"`
 	} `json:"test_cases"`
+}
+
+type ThitaBulkResponse struct {
+	Categories []struct {
+		ID          int    `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Patterns    []struct {
+			ID              int    `json:"id"`
+			Name            string `json:"name"`
+			Description     string `json:"description"`
+			MatchedProblems []struct {
+				ID         string `json:"id"`
+				Title      string `json:"title"`
+				Difficulty string `json:"difficulty"`
+			} `json:"matched_problems"`
+		} `json:"patterns"`
+	} `json:"categories"`
 }
 
 // Login handles user authentication
@@ -1021,6 +1040,137 @@ func (h *Handlers) FetchExternalProblem(w http.ResponseWriter, r *http.Request) 
 	}
 
 	respondWithJSON(w, http.StatusOK, result)
+}
+
+// FetchAllExternalData fetches the entire DSA pattern structure from Thita.ai
+func (h *Handlers) FetchAllExternalData(w http.ResponseWriter, r *http.Request) {
+	if isDemoUser(r) {
+		respondWithError(w, http.StatusForbidden, "Demo users cannot fetch bulk data")
+		return
+	}
+
+	url := "https://api.thita.ai/api/technical-coaching/dsa-pattern-structure?refresh=true"
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "AlgoVault/1.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to connect to external API: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respondWithError(w, resp.StatusCode, fmt.Sprintf("External API returned error status: %d", resp.StatusCode))
+		return
+	}
+
+	var thitaResp ThitaBulkResponse
+	if err := json.NewDecoder(resp.Body).Decode(&thitaResp); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to parse external API response")
+		return
+	}
+
+	// Process categories, patterns, and problems
+	countCategories := 0
+	countPatterns := 0
+	countProblems := 0
+
+	for _, tCat := range thitaResp.Categories {
+		// 1. Check if category exists or create it
+		var catID string
+		query := h.DB.convertPlaceholders("SELECT id FROM categories WHERE name = ?")
+		err := h.DB.DB.QueryRow(query, tCat.Name).Scan(&catID)
+
+		if err == sql.ErrNoRows {
+			catID = generateID()
+			insertQuery := h.DB.convertPlaceholders("INSERT INTO categories (id, name, icon, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+			_, err = h.DB.DB.Exec(insertQuery, catID, tCat.Name, "Globe", tCat.Description, time.Now(), time.Now())
+			if err != nil {
+				log.Printf("Error creating category %s: %v", tCat.Name, err)
+				continue
+			}
+			countCategories++
+		}
+
+		for _, tPat := range tCat.Patterns {
+			// 2. Check if pattern exists or create it
+			var patID string
+			query = h.DB.convertPlaceholders("SELECT id FROM patterns WHERE name = ? AND category_id = ?")
+			err = h.DB.DB.QueryRow(query, tPat.Name, catID).Scan(&patID)
+
+			if err == sql.ErrNoRows {
+				patID = generateID()
+				insertQuery := h.DB.convertPlaceholders("INSERT INTO patterns (id, category_id, name, icon, description, theory, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+				_, err = h.DB.DB.Exec(insertQuery, patID, catID, tPat.Name, "Code", tPat.Description, "", time.Now(), time.Now())
+				if err != nil {
+					log.Printf("Error creating pattern %s: %v", tPat.Name, err)
+					continue
+				}
+				countPatterns++
+			}
+
+			for _, tProb := range tPat.MatchedProblems {
+				// 3. Check if problem exists or create it
+				var probID string
+				// Use the ID from Thita if possible, otherwise generate one
+				targetProbID := tProb.ID
+				if targetProbID == "" {
+					targetProbID = generateID()
+				}
+
+				query = h.DB.convertPlaceholders("SELECT id FROM problems WHERE title = ? AND pattern_id = ?")
+				err = h.DB.DB.QueryRow(query, tProb.Title, patID).Scan(&probID)
+
+				if err == sql.ErrNoRows {
+					insertQuery := h.DB.convertPlaceholders("INSERT INTO problems (id, pattern_id, title, difficulty, description, input, output, constraints, sample_input, sample_output, explanation, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+					_, err = h.DB.DB.Exec(insertQuery,
+						targetProbID, patID, tProb.Title, tProb.Difficulty,
+						"Description pending fetch...", "See description", "See description",
+						"No specific constraints provided.", "", "", "", "",
+						time.Now(), time.Now())
+					if err != nil {
+						log.Printf("Error creating problem %s: %v", tProb.Title, err)
+						continue
+					}
+					countProblems++
+				}
+			}
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Bulk fetch completed successfully",
+		"stats": map[string]int{
+			"categoriesCreated": countCategories,
+			"patternsCreated":   countPatterns,
+			"problemsCreated":   countProblems,
+		},
+	})
+}
+
+// ClearAllData wipes the entire database (except users)
+func (h *Handlers) ClearAllData(w http.ResponseWriter, r *http.Request) {
+	if isDemoUser(r) {
+		respondWithError(w, http.StatusForbidden, "Demo users cannot clear data")
+		return
+	}
+
+	// Order matters due to foreign keys
+	tables := []string{"solutions", "problems", "patterns", "categories", "learning_resources", "roadmap_items", "learning_topics"}
+
+	for _, table := range tables {
+		_, err := h.DB.DB.Exec(fmt.Sprintf("DELETE FROM %s", table))
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to clear table %s: %v", table, err))
+			return
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]string{"message": "All data cleared successfully"})
 }
 
 // GenerateCategoryDescription uses AI to generate category description

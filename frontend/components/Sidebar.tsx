@@ -13,7 +13,9 @@ import {
     CheckCircle2,
     ChevronRight,
     Menu,
-    X
+    X,
+    RefreshCw,
+    Trash2
 } from 'lucide-react';
 import { api } from '../services/apiService';
 import { LearningTopic, ViewState } from '../types';
@@ -33,6 +35,36 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
     const [topics, setTopics] = useState<LearningTopic[]>([]);
     const [isOpen, setIsOpen] = useState(true);
+    const [isImporting, setIsImporting] = useState(false);
+
+    const handleImport = async () => {
+        if (!window.confirm('This will import all DSA categories, patterns, and problems from Thita.ai. Continue?')) return;
+
+        setIsImporting(true);
+        try {
+            const result = await api.fetchAllExternalData();
+            alert(`${result.message}\n\nStats:\n- Categories: ${result.stats.categoriesCreated}\n- Patterns: ${result.stats.patternsCreated}\n- Problems: ${result.stats.problemsCreated}`);
+            window.location.reload(); // Refresh to show new data
+        } catch (error) {
+            console.error('Import failed:', error);
+            alert('Import failed. Please check the console for details.');
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+    const handleClearAll = async () => {
+        if (!window.confirm('CRITICAL: This will delete ALL categories, patterns, problems, and solutions. This action CANNOT be undone. Are you absolutely sure?')) return;
+
+        try {
+            await api.clearAllData();
+            alert('All data cleared successfully.');
+            window.location.reload();
+        } catch (error) {
+            console.error('Clear failed:', error);
+            alert('Failed to clear data.');
+        }
+    };
 
     useEffect(() => {
         const fetchTopics = async () => {
@@ -161,6 +193,30 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     <div className="bg-indigo-500 h-1.5 rounded-full w-1/3"></div>
                                 </div>
                                 <span className="text-[10px] text-slate-600">12 of 45 topics completed</span>
+                            </div>
+                        </div>
+
+                        {/* Data Management Section */}
+                        <div className="pt-4 border-t border-slate-700/50">
+                            <h3 className="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                                Data Management
+                            </h3>
+                            <div className="space-y-2">
+                                <button
+                                    onClick={handleImport}
+                                    disabled={isImporting}
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-400 hover:bg-slate-700 hover:text-slate-200 rounded-lg transition-all disabled:opacity-50"
+                                >
+                                    <RefreshCw size={16} className={isImporting ? 'animate-spin' : ''} />
+                                    <span>{isImporting ? 'Importing...' : 'Import DSA Patterns'}</span>
+                                </button>
+                                <button
+                                    onClick={handleClearAll}
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-400/70 hover:bg-red-500/10 hover:text-red-400 rounded-lg transition-all"
+                                >
+                                    <Trash2 size={16} />
+                                    <span>Clear All Data</span>
+                                </button>
                             </div>
                         </div>
                     </div>

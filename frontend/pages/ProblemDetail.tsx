@@ -4,20 +4,21 @@ import { LANGUAGES } from '../constants';
 import { api } from '../services/apiService';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
-import { 
-  Clipboard, 
-  BookText, 
-  Code, 
-  FileEdit, 
-  Sparkles, 
-  Check, 
+import {
+  Clipboard,
+  BookText,
+  Code,
+  FileEdit,
+  Sparkles,
+  Check,
   ExternalLink,
   ChevronDown,
   Edit,
   Trash2,
   Save,
   X,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
 interface ProblemDetailProps {
@@ -30,7 +31,7 @@ interface ProblemDetailProps {
 const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, onUpdate, onDelete, isDemoUser = false }) => {
   const [problem, setProblem] = useState<Problem>(initialProblem);
   const [isEditing, setIsEditing] = useState(false);
-  
+
   // Wrapper function to prevent setting isEditing to true for demo users
   const setEditingState = (value: boolean) => {
     if (value && isDemoUser) {
@@ -38,14 +39,14 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
     }
     setIsEditing(value);
   };
-  
+
   // Prevent editing for demo users - ensure isEditing is always false for demo users
   useEffect(() => {
     if (isDemoUser) {
       setEditingState(false);
     }
   }, [isDemoUser]);
-  
+
   // Additional check to prevent editing if user becomes demo user while editing
   useEffect(() => {
     if (isDemoUser && isEditing) {
@@ -99,13 +100,13 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
 
   // Use problem.solutions for view mode, editSolutions for edit mode
   // Find solution by exact language match - don't fallback to first solution
-  const currentSolution = isEditing 
+  const currentSolution = isEditing
     ? editSolutions.find(s => s.language === selectedLanguage)
     : (problem.solutions || []).find(s => s.language === selectedLanguage);
 
   const handleCopy = async () => {
     if (!currentSolution || !currentSolution.code) return;
-    
+
     try {
       // Check if clipboard API is available
       if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -151,6 +152,63 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
     }
   };
 
+  const handleAIGenerate = async () => {
+    if (!aiQuery.trim()) return;
+    setIsGeneratingProblem(true);
+    try {
+      const data = await api.generateProblem(aiQuery);
+      setEditTitle(data.title);
+      setEditDifficulty(data.difficulty);
+      setEditDescription(data.description);
+      setEditInput(data.input);
+      setEditOutput(data.output);
+      setEditConstraints(data.constraints);
+      setEditSampleInput(data.sampleInput);
+      setEditSampleOutput(data.sampleOutput);
+      setEditExplanation(data.explanation);
+      setEditNotes(data.notes);
+      setShowAIModal(false);
+      setAiQuery('');
+    } catch (error) {
+      console.error('AI generation failed:', error);
+      alert('Failed to generate problem details.');
+    } finally {
+      setIsGeneratingProblem(false);
+    }
+  };
+
+  const handleExternalFetch = async () => {
+    // If the problem ID looks like a Thita ID (e.g., dsa_...), use it.
+    // Otherwise, ask for an ID.
+    let targetId = problem.id;
+    if (!targetId.startsWith('dsa_')) {
+      const inputId = window.prompt('Enter Thita.ai Problem ID (e.g., dsa_ContainerWithMostWater):');
+      if (!inputId) return;
+      targetId = inputId;
+    }
+
+    setSaving(true); // Reuse saving state for loading indicator
+    try {
+      const data = await api.fetchExternalProblem(targetId);
+      setEditTitle(data.title);
+      setEditDifficulty(data.difficulty);
+      setEditDescription(data.description);
+      setEditInput(data.input);
+      setEditOutput(data.output);
+      setEditConstraints(data.constraints);
+      setEditSampleInput(data.sampleInput);
+      setEditSampleOutput(data.sampleOutput);
+      setEditExplanation(data.explanation);
+      setEditNotes(data.notes);
+      alert('Problem details fetched successfully!');
+    } catch (error) {
+      console.error('External fetch failed:', error);
+      alert('Failed to fetch problem details from Thita.ai.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const updateSolution = (language: string, code: string) => {
     setEditSolutions(prev => {
       const existing = prev.find(s => s.language === language);
@@ -160,11 +218,11 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
       }
       // Create new solution, but try to find existing one from problem to preserve ID
       const existingFromProblem = (problem.solutions || []).find(s => s.language === language);
-      return [...prev, { 
-        id: existingFromProblem?.id || '', 
-        language: language as any, 
-        code, 
-        problemId: problem.id 
+      return [...prev, {
+        id: existingFromProblem?.id || '',
+        language: language as any,
+        code,
+        problemId: problem.id
       }];
     });
   };
@@ -202,7 +260,7 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
             problemId: problem.id,
           };
         });
-      
+
       const updated = await api.updateProblem(problem.id, {
         title: editTitle,
         difficulty: editDifficulty,
@@ -272,10 +330,9 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-xl sticky top-24 overflow-hidden">
           <div className="flex items-center justify-between mb-6 gap-2 min-w-0">
             <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
-              <span className={`w-3 h-3 rounded-full flex-shrink-0 ${
-                (isEditing ? editDifficulty : problem.difficulty) === 'Easy' ? 'bg-emerald-500' :
+              <span className={`w-3 h-3 rounded-full flex-shrink-0 ${(isEditing ? editDifficulty : problem.difficulty) === 'Easy' ? 'bg-emerald-500' :
                 (isEditing ? editDifficulty : problem.difficulty) === 'Medium' ? 'bg-amber-500' : 'bg-red-500'
-              }`} />
+                }`} />
               {isEditing && !isDemoUser ? (
                 <input
                   type="text"
@@ -305,6 +362,13 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
                       title="Save Changes"
                     >
                       <Save size={16} />
+                    </button>
+                    <button
+                      onClick={handleExternalFetch}
+                      className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white transition-colors"
+                      title="Fetch from Thita.ai"
+                    >
+                      <RefreshCw size={16} />
                     </button>
                     <button
                       onClick={handleCancel}
@@ -354,29 +418,26 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
           )}
 
           <nav className="space-y-1">
-            <button 
+            <button
               onClick={() => setActiveTab('description')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                activeTab === 'description' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${activeTab === 'description' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                }`}
             >
               <BookText size={18} />
               <span className="font-semibold">Problem</span>
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('solution')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                activeTab === 'solution' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${activeTab === 'solution' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                }`}
             >
               <Code size={18} />
               <span className="font-semibold">Solutions</span>
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('notes')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                activeTab === 'notes' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${activeTab === 'notes' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'
+                }`}
             >
               <FileEdit size={18} />
               <span className="font-semibold">Notes & Tips</span>
@@ -388,7 +449,7 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
               <span className="text-slate-500 uppercase font-bold">Difficulty</span>
               <span className={
                 (isEditing ? editDifficulty : problem.difficulty) === 'Easy' ? 'text-emerald-500' :
-                (isEditing ? editDifficulty : problem.difficulty) === 'Medium' ? 'text-amber-500' : 'text-red-500'
+                  (isEditing ? editDifficulty : problem.difficulty) === 'Medium' ? 'text-amber-500' : 'text-red-500'
               }>{isEditing ? editDifficulty : problem.difficulty}</span>
             </div>
             <button className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs hover:border-slate-500 transition-colors">
@@ -613,7 +674,7 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
                         spellCheck={false}
                         className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-indigo-300 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
                         placeholder={`${lang.label} solution...`}
-                        style={{ 
+                        style={{
                           fontFamily: 'Fira Code, Consolas, Monaco, monospace',
                           tabSize: 4,
                           whiteSpace: 'pre',
@@ -635,9 +696,8 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
                         <button
                           key={lang.value}
                           onClick={() => setSelectedLanguage(lang.value as any)}
-                          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all relative ${
-                            selectedLanguage === lang.value ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                          }`}
+                          className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all relative ${selectedLanguage === lang.value ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                            }`}
                           title={hasSolution ? `${lang.label} solution available` : `No ${lang.label} solution yet`}
                         >
                           {lang.label}
@@ -648,7 +708,7 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
                       );
                     })}
                   </div>
-                  <button 
+                  <button
                     onClick={handleCopy}
                     className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-bold text-slate-300 transition-colors"
                   >
@@ -657,7 +717,7 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
                   </button>
                 </div>
                 <div className="flex-1 bg-slate-950 p-6 overflow-auto">
-                  <pre className="code-font text-indigo-300 text-sm leading-relaxed whitespace-pre" style={{ 
+                  <pre className="code-font text-indigo-300 text-sm leading-relaxed whitespace-pre" style={{
                     fontFamily: 'Fira Code, Consolas, Monaco, monospace',
                     tabSize: 4,
                   }}>
@@ -677,7 +737,7 @@ const ProblemDetail: React.FC<ProblemDetailProps> = ({ problem: initialProblem, 
                 Problem Insights
               </h2>
               {!isEditing && (
-                <button 
+                <button
                   onClick={handleGenerateAINote}
                   disabled={isGeneratingNote}
                   className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-amber-900/20"
