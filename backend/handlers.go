@@ -227,7 +227,7 @@ func (h *Handlers) GetCategories(w http.ResponseWriter, r *http.Request) {
 		       COUNT(DISTINCT p.id) as pattern_count
 		FROM categories c
 		LEFT JOIN patterns p ON p.category_id = c.id
-		GROUP BY c.id
+		GROUP BY c.id, c.name, c.icon, c.description, c.created_at, c.updated_at
 		ORDER BY c.created_at DESC
 	`)
 	if err != nil {
@@ -326,15 +326,16 @@ func (h *Handlers) GetPatterns(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	categoryID := vars["categoryId"]
 
-	rows, err := h.DB.DB.Query(`
+	query := h.DB.convertPlaceholders(`
 		SELECT p.id, p.category_id, p.name, p.icon, p.description, COALESCE(p.theory, '') as theory, p.created_at, p.updated_at,
 		       COUNT(DISTINCT pr.id) as problem_count
 		FROM patterns p
 		LEFT JOIN problems pr ON pr.pattern_id = p.id
 		WHERE p.category_id = ?
-		GROUP BY p.id
+		GROUP BY p.id, p.category_id, p.name, p.icon, p.description, p.theory, p.created_at, p.updated_at
 		ORDER BY p.created_at DESC
-	`, categoryID)
+	`)
+	rows, err := h.DB.DB.Query(query, categoryID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Database error: %v", err))
 		return
@@ -462,14 +463,15 @@ func (h *Handlers) GetProblems(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	patternID := vars["patternId"]
 
-	rows, err := h.DB.DB.Query(`
+	query := h.DB.convertPlaceholders(`
 		SELECT id, pattern_id, title, difficulty, description, input, output, 
 		       constraints, sample_input, sample_output, explanation, notes,
 		       created_at, updated_at
 		FROM problems
 		WHERE pattern_id = ?
 		ORDER BY created_at DESC
-	`, patternID)
+	`)
+	rows, err := h.DB.DB.Query(query, patternID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Database error")
 		return
@@ -509,13 +511,14 @@ func (h *Handlers) GetProblem(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	var prob Problem
-	err := h.DB.DB.QueryRow(`
+	query := h.DB.convertPlaceholders(`
 		SELECT id, pattern_id, title, difficulty, description, input, output,
 		       constraints, sample_input, sample_output, explanation, notes,
 		       created_at, updated_at
 		FROM problems
 		WHERE id = ?
-	`, id).Scan(
+	`)
+	err := h.DB.DB.QueryRow(query, id).Scan(
 		&prob.ID, &prob.PatternID, &prob.Title, &prob.Difficulty,
 		&prob.Description, &prob.Input, &prob.Output, &prob.Constraints,
 		&prob.SampleInput, &prob.SampleOutput, &prob.Explanation, &prob.Notes,
@@ -680,11 +683,12 @@ func (h *Handlers) DeleteProblem(w http.ResponseWriter, r *http.Request) {
 
 // Helper function to get solutions for a problem
 func (h *Handlers) getSolutions(problemID string) ([]Solution, error) {
-	rows, err := h.DB.DB.Query(`
+	query := h.DB.convertPlaceholders(`
 		SELECT id, problem_id, language, code, created_at, updated_at
 		FROM solutions
 		WHERE problem_id = ?
-	`, problemID)
+	`)
+	rows, err := h.DB.DB.Query(query, problemID)
 	if err != nil {
 		return nil, err
 	}
