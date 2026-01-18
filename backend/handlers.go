@@ -264,7 +264,7 @@ func (h *Handlers) GetCategories(w http.ResponseWriter, r *http.Request) {
 		FROM categories c
 		LEFT JOIN patterns p ON p.category_id = c.id
 		GROUP BY c.id, c.name, c.icon, c.description, c.created_at, c.updated_at
-		ORDER BY c.created_at DESC
+		ORDER BY c.created_at ASC
 	`)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Database error")
@@ -369,7 +369,7 @@ func (h *Handlers) GetPatterns(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN problems pr ON pr.pattern_id = p.id
 		WHERE p.category_id = ?
 		GROUP BY p.id, p.category_id, p.name, p.icon, p.description, p.theory, p.created_at, p.updated_at
-		ORDER BY p.created_at DESC
+		ORDER BY p.created_at ASC
 	`)
 	rows, err := h.DB.DB.Query(query, categoryID)
 	if err != nil {
@@ -505,7 +505,7 @@ func (h *Handlers) GetProblems(w http.ResponseWriter, r *http.Request) {
 		       created_at, updated_at
 		FROM problems
 		WHERE pattern_id = ?
-		ORDER BY created_at DESC
+		ORDER BY created_at ASC
 	`)
 	rows, err := h.DB.DB.Query(query, patternID)
 	if err != nil {

@@ -62,8 +62,14 @@ const LearningTopicDetail: React.FC<LearningTopicDetailProps> = ({ topic }) => {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+            <div className="space-y-8 animate-pulse">
+                <div className="h-32 bg-slate-800/50 rounded-2xl border border-slate-700/50" />
+                <div className="h-10 bg-slate-800/50 rounded-xl w-48" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {[1, 2, 3, 4].map(i => (
+                        <div key={i} className="h-48 bg-slate-800/40 rounded-xl border border-slate-700/50" />
+                    ))}
+                </div>
             </div>
         );
     }
@@ -88,8 +94,8 @@ const LearningTopicDetail: React.FC<LearningTopicDetailProps> = ({ topic }) => {
                 <button
                     onClick={() => setActiveTab('resources')}
                     className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'resources'
-                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
                         }`}
                 >
                     Resources
@@ -97,8 +103,8 @@ const LearningTopicDetail: React.FC<LearningTopicDetailProps> = ({ topic }) => {
                 <button
                     onClick={() => setActiveTab('roadmap')}
                     className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'roadmap'
-                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50'
                         }`}
                 >
                     Roadmap

@@ -108,7 +108,7 @@ const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, categoryName, on
           <p className="text-slate-400 mt-1 max-w-2xl">{pattern.description}</p>
         </div>
         {!isDemoUser && (
-          <button 
+          <button
             onClick={() => {
               setEditingProblem(undefined);
               setShowForm(true);
@@ -126,13 +126,12 @@ const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, categoryName, on
         <div className="relative filter-menu-container">
           <button
             onClick={() => setShowFilterMenu(!showFilterMenu)}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-              difficultyFilter !== 'All' 
-                ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' 
-                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-            }`}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border transition-colors ${difficultyFilter !== 'All'
+              ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30'
+              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+              }`}
           >
-            <Filter size={16} /> 
+            <Filter size={16} />
             Filter
             {difficultyFilter !== 'All' && (
               <span className="ml-1 text-xs">({difficultyFilter})</span>
@@ -147,11 +146,10 @@ const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, categoryName, on
                     setDifficultyFilter(diff);
                     setShowFilterMenu(false);
                   }}
-                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                    difficultyFilter === diff
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-300 hover:bg-slate-700'
-                  }`}
+                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${difficultyFilter === diff
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-slate-300 hover:bg-slate-700'
+                    }`}
                 >
                   {diff}
                 </button>
@@ -171,11 +169,10 @@ const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, categoryName, on
               setSortOrder(null);
             }
           }}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-            sortOrder 
-              ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' 
-              : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-          }`}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border transition-colors ${sortOrder
+            ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30'
+            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+            }`}
         >
           {sortOrder === 'asc' ? <SortAsc size={16} /> : sortOrder === 'desc' ? <SortDesc size={16} /> : <SortAsc size={16} />}
           Difficulty
@@ -212,9 +209,24 @@ const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, categoryName, on
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700/50">
-            {filteredAndSortedProblems.map(prob => (
-              <tr 
-                key={prob.id} 
+            {loading ? (
+              [1, 2, 3, 4, 5, 6].map(i => (
+                <tr key={i} className="animate-pulse">
+                  <td className="px-6 py-5"><div className="w-5 h-5 bg-slate-700/50 rounded-full" /></td>
+                  <td className="px-6 py-5"><div className="h-5 bg-slate-700/50 rounded w-1/2" /></td>
+                  <td className="px-6 py-5"><div className="h-6 bg-slate-700/30 rounded-full w-20" /></td>
+                  <td className="px-6 py-5">
+                    <div className="flex gap-2">
+                      <div className="w-12 h-4 bg-slate-700/30 rounded" />
+                      <div className="w-12 h-4 bg-slate-700/30 rounded" />
+                    </div>
+                  </td>
+                  <td className="px-6 py-5 text-right"><div className="h-5 bg-slate-700/50 rounded w-8 ml-auto" /></td>
+                </tr>
+              ))
+            ) : filteredAndSortedProblems.map(prob => (
+              <tr
+                key={prob.id}
                 className="hover:bg-slate-750 transition-colors group cursor-pointer"
                 onClick={() => onSelectProblem(prob)}
               >
@@ -225,11 +237,10 @@ const PatternDetail: React.FC<PatternDetailProps> = ({ pattern, categoryName, on
                   <span className="text-white font-medium group-hover:text-indigo-400 transition-colors">{prob.title}</span>
                 </td>
                 <td className="px-6 py-4">
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                    prob.difficulty === 'Easy' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${prob.difficulty === 'Easy' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
                     prob.difficulty === 'Medium' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
-                    'bg-red-500/10 text-red-500 border-red-500/20'
-                  }`}>
+                      'bg-red-500/10 text-red-500 border-red-500/20'
+                    }`}>
                     {prob.difficulty}
                   </span>
                 </td>

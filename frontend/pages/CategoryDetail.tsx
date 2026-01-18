@@ -15,6 +15,7 @@ interface CategoryDetailProps {
 
 const CategoryDetail: React.FC<CategoryDetailProps> = ({ category, onSelectPattern, isDemoUser = false }) => {
   const [patterns, setPatterns] = useState<Pattern[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingPattern, setEditingPattern] = useState<Pattern | undefined>();
@@ -23,7 +24,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({ category, onSelectPatte
     pattern: null,
   });
   const [isDeleting, setIsDeleting] = useState(false);
-  
+
   // Prevent form from showing for demo users
   useEffect(() => {
     if (isDemoUser && showForm) {
@@ -33,11 +34,16 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({ category, onSelectPatte
   }, [isDemoUser, showForm]);
 
   const loadPatterns = () => {
+    setLoading(true);
     api.getPatterns(category.id)
-      .then(data => setPatterns(data || []))
+      .then(data => {
+        setPatterns(data || []);
+        setLoading(false);
+      })
       .catch(err => {
         console.error('Error loading patterns:', err);
         setPatterns([]); // Ensure it's always an array
+        setLoading(false);
       });
   };
 
@@ -45,7 +51,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({ category, onSelectPatte
     loadPatterns();
   }, [category.id]);
 
-  const filtered = patterns.filter(p => 
+  const filtered = patterns.filter(p =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -64,7 +70,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({ category, onSelectPatte
         <div className="flex gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-2.5 text-slate-500" size={18} />
-            <input 
+            <input
               type="text"
               placeholder="Filter patterns..."
               value={searchTerm}
@@ -73,7 +79,7 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({ category, onSelectPatte
             />
           </div>
           {!isDemoUser && (
-            <button 
+            <button
               onClick={() => {
                 setEditingPattern(undefined);
                 setShowForm(true);
@@ -88,31 +94,44 @@ const CategoryDetail: React.FC<CategoryDetailProps> = ({ category, onSelectPatte
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filtered.map(pat => (
+        {loading ? (
+          <>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="relative flex items-center p-5 bg-slate-800/40 border border-slate-700/50 rounded-2xl animate-pulse">
+                <div className="w-12 h-12 flex-shrink-0 bg-slate-700/50 rounded-xl mr-5" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-5 bg-slate-700/50 rounded w-1/3" />
+                  <div className="h-4 bg-slate-700/30 rounded w-2/3" />
+                </div>
+                <div className="w-20 h-6 bg-slate-700/50 rounded-lg ml-4" />
+              </div>
+            ))}
+          </>
+        ) : filtered.map(pat => (
           <div
             key={pat.id}
             className="relative flex items-center p-5 bg-slate-800 border border-slate-700 hover:border-slate-500 hover:bg-slate-750 rounded-2xl transition-all group"
           >
-            <button 
+            <button
               onClick={() => onSelectPattern(pat)}
               className="flex-1 flex items-center text-left"
             >
-            <div className="w-12 h-12 flex-shrink-0 bg-slate-900 border border-slate-700 rounded-xl flex items-center justify-center text-indigo-400 mr-5 group-hover:scale-110 transition-transform">
-              {/* Fallback to Code2 icon if pattern icon is not found in map */}
-              {ICON_MAP[pat.icon] || <Code2 size={24} />}
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-white group-hover:text-indigo-400 transition-colors">
-                {pat.name}
-              </h3>
-              <p className="text-slate-400 text-sm line-clamp-1">{pat.description}</p>
-            </div>
-            <div className="flex items-center gap-4 ml-4">
-              <span className="text-xs font-semibold px-2 py-1 bg-slate-900 border border-slate-700 rounded-lg text-slate-400">
-                {pat.problemCount} Problems
-              </span>
-              <ChevronRight size={20} className="text-slate-600 group-hover:text-indigo-400 transition-colors" />
-            </div>
+              <div className="w-12 h-12 flex-shrink-0 bg-slate-900 border border-slate-700 rounded-xl flex items-center justify-center text-indigo-400 mr-5 group-hover:scale-110 transition-transform">
+                {/* Fallback to Code2 icon if pattern icon is not found in map */}
+                {ICON_MAP[pat.icon] || <Code2 size={24} />}
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white group-hover:text-indigo-400 transition-colors">
+                  {pat.name}
+                </h3>
+                <p className="text-slate-400 text-sm line-clamp-1">{pat.description}</p>
+              </div>
+              <div className="flex items-center gap-4 ml-4">
+                <span className="text-xs font-semibold px-2 py-1 bg-slate-900 border border-slate-700 rounded-lg text-slate-400">
+                  {pat.problemCount} Problems
+                </span>
+                <ChevronRight size={20} className="text-slate-600 group-hover:text-indigo-400 transition-colors" />
+              </div>
             </button>
             {!isDemoUser && (
               <div className="flex gap-2 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
